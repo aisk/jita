@@ -315,3 +315,52 @@ def test_only_writable_sections():
         assert cell.value == 5
         cell.value = 6
         assert cell.value == 6
+
+
+def test_exec_memory_writes_tail_after_protect():
+    page = mmap.PAGESIZE
+    with ExecMemory(2 * page) as mem:
+        mem.protect_exec(page)
+        mem.write(b"\x01\x02", page)
+        assert ctypes.string_at(mem.address + page, 2) == b"\x01\x02"
+        for off in (0, page - 1):
+            with pytest.raises(LoadError, match="executable"):
+                mem.write(b"\x00\x00", off)
+
+
+def test_module_write_patches_writable_data():
+    a = Assembler(x64)
+    with a.section("vars", writable=True):
+        v = a.label("v")
+        a.qword(5)
+    with a:
+        x64.mov(x64.rax, x64.qword[x64.rip + v])
+        x64.ret()
+    with a.load() as mod:
+        get = mod.function(ctypes.c_int64)
+        assert get() == 5
+        mod.write(v, (7).to_bytes(8, "little"))
+        assert get() == 7
+        mod.write("v", (-3).to_bytes(8, "little", signed=True))
+        assert get() == -3
+        mod.write(mod.image.section_offsets["vars"], (11).to_bytes(8, "little"))
+        assert get() == 11
+        with pytest.raises(LoadError, match="executable"):
+            mod.write(0, b"\x90")
+        with pytest.raises(LoadError, match="outside the image"):
+            mod.write(len(mod.image.data), b"\x00")
+
+
+def test_module_rejects_use_after_memory_close():
+    a = Assembler(x64)
+    a.bytes(b"\xc3")
+    a.label("end")
+    mod = a.load()
+    mod.memory.close()
+    for call in (
+        lambda: mod.function(None),
+        lambda: mod.address("end"),
+        lambda: mod.write("end", b""),
+    ):
+        with pytest.raises(LoadError, match="closed"):
+            call()

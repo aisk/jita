@@ -45,14 +45,23 @@ class ExecMemory:
         self.address = ctypes.addressof(anchor)
         del anchor  # release the buffer export so the map can be closed
         self.executable = False
+        self.exec_size = 0  # size of the RX prefix once executable
+
+    @property
+    def closed(self) -> bool:
+        return self._map is None
 
     def write(self, data: bytes, offset: int = 0) -> None:
+        """Copy `data` to `offset`. After `protect_exec` only the writable
+        tail (offset >= exec_size) accepts writes."""
         if self._map is None:
             raise LoadError("memory is closed")
-        if self.executable:
-            raise LoadError("memory is already executable")
         if offset < 0 or offset + len(data) > self.size:
             raise LoadError(f"write of {len(data)} bytes at {offset:#x} exceeds {self.size:#x}")
+        if self.executable and offset < self.exec_size:
+            raise LoadError(
+                f"write at {offset:#x} touches the executable prefix ({self.exec_size:#x} bytes)"
+            )
         self._map[offset : offset + len(data)] = data
 
     def protect_exec(self, exec_size: int | None = None) -> None:
@@ -68,6 +77,7 @@ class ExecMemory:
         if exec_size:
             _mprotect(self.address, exec_size, mmap.PROT_READ | mmap.PROT_EXEC)
         self.executable = True
+        self.exec_size = exec_size
         if self._icache_flush is not None and exec_size:
             self._icache_flush(self.address, exec_size)
 

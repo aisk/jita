@@ -12,6 +12,7 @@ from .core import (
     PcLabels,
     current,
 )
+from .runtime import Module
 
 __all__ = [
     "Assembler",
@@ -22,6 +23,7 @@ __all__ = [
     "Label",
     "LinkError",
     "LoadError",
+    "Module",
     "PcLabels",
     "current",
 ]

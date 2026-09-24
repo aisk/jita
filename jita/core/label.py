@@ -2,32 +2,45 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .assembler import Assembler
     from .section import Section
+
+# Global bind order. Images remember the value at link time, so labels bound
+# afterwards (even at the very end of a section) can be told apart.
+_bind_seq = itertools.count(1)
 
 
 class Label:
     """A position in a section. Hashable by identity, never by name.
 
-    Named labels become exported symbols of the linked image.
+    Named labels become exported symbols of the linked image. A label with
+    an `owner` binds into that assembler on `here()`; without one, `here()`
+    uses the context-current assembler.
     """
 
-    __slots__ = ("name", "section", "offset", "_pc")
+    __slots__ = ("name", "section", "offset", "owner", "_pc", "_seq")
 
-    def __init__(self, name: str | None = None):
+    def __init__(self, name: str | None = None, *, owner: Assembler | None = None):
         self.name = name
+        self.owner = owner
         self.section: Section | None = None
         self.offset: int | None = None
         self._pc: int | None = None  # index when created by PcLabels
+        self._seq = 0  # position in the global bind order, 0 while unbound
 
     @property
     def bound(self) -> bool:
         return self.section is not None
 
     def here(self) -> Label:
-        """Bind at the current position of the current assembler."""
+        """Bind at the current position of the owner assembler, or of the
+        current assembler if the label has no owner."""
+        if self.owner is not None:
+            return self.owner.bind(self)
         from .assembler import current
 
         return current().bind(self)
@@ -55,20 +68,22 @@ class PcLabels:
     """Indexed labels, DynASM `=>n`.
 
     `pc[i]` returns the same Label for the same i, creating it on first use.
-    `len(pc)` is the max index + 1.
+    `len(pc)` is the max index + 1. Labels created here are owned by
+    `owner`, so `pc[i].here()` binds into it outside a `with` block too.
     """
 
-    __slots__ = ("_labels",)
+    __slots__ = ("_labels", "owner")
 
-    def __init__(self):
+    def __init__(self, owner: Assembler | None = None):
         self._labels: dict[int, Label] = {}
+        self.owner = owner
 
     def __getitem__(self, i: int) -> Label:
         if not isinstance(i, int) or i < 0:
             raise IndexError(f"pc label index must be a non-negative int, got {i!r}")
         lbl = self._labels.get(i)
         if lbl is None:
-            lbl = self._labels[i] = Label()
+            lbl = self._labels[i] = Label(owner=self.owner)
             lbl._pc = i
         return lbl
 

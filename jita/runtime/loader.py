@@ -26,7 +26,7 @@ class Module:
         self.closed = False
 
     def _check_open(self) -> None:
-        if self.closed:
+        if self.closed or self.memory.closed:
             raise LoadError("module is closed")
 
     def address(self, label: Label | str) -> int:
@@ -40,6 +40,19 @@ class Module:
         fn = ctypes.CFUNCTYPE(restype, *argtypes)(addr)
         fn._jita_module = self
         return fn
+
+    def write(self, where: int | Label | str, data: bytes) -> None:
+        """Overwrite loaded bytes at `where`, an offset from the image base
+        or a label/symbol name. Only writable sections accept writes; the
+        executable prefix raises LoadError."""
+        self._check_open()
+        offset = where if isinstance(where, int) else self.image.address(where) - self.image.base
+        if offset < 0 or offset + len(data) > len(self.image.data):
+            raise LoadError(
+                f"write of {len(data)} bytes at {offset:#x} is outside the image "
+                f"({len(self.image.data):#x} bytes)"
+            )
+        self.memory.write(data, offset)
 
     def close(self) -> None:
         self.closed = True

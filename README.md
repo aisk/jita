@@ -78,7 +78,9 @@ generated code one instruction per line with its bytes and relocations.
 
 Loaded code is read-execute, and so are sections by default. Data you want
 to modify at runtime goes into a section created with `writable=True`,
-which is placed on its own pages and stays read-write.
+which is placed on its own pages and stays read-write. Python can update
+it through the module, e.g. `mod.write("counter", (5).to_bytes(8, "little"))`.
+`a.align(n)` pads code with NOPs and data sections with zero bytes.
 
 `call(Extern(...))` is a rel32 call, so loading fails with `LinkError` when
 the target is more than 2GB away from the code. In that case load the

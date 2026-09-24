@@ -37,7 +37,7 @@ def test_data_directives():
 
 def test_align_nop_and_fill():
     a = Assembler(x64)
-    a.bytes(b"\xc3")
+    x64.ret(asm=a)
     a.align(8)
     assert a.cur.buf == b"\xc3" + x64.ARCH.nop_fill(7)
     a.bytes(b"\x00")
@@ -324,3 +324,82 @@ def test_nested_contexts():
         assert current() is a
     with pytest.raises(JitaError):
         a.__exit__(None, None, None)
+
+
+def test_pc_label_here_binds_into_owner():
+    a, b = Assembler(x64), Assembler(x64)
+    a.bytes(b"\x90")
+    # Outside any context the owner is used.
+    lbl = a.pc[0].here()
+    assert lbl.section is a.cur and lbl.offset == 1
+    # Inside another assembler's context the owner still wins.
+    with b:
+        b.bytes(b"\x90" * 4)
+        a.pc[1].here()
+    assert a.pc[1].section is a.cur and a.pc[1].offset == 1
+    assert not b.labels
+    # Owned labels cannot be bound into another assembler.
+    with pytest.raises(LinkError, match="another assembler"):
+        b.bind(a.pc[2])
+    assert a.label().owner is a
+
+
+def test_plain_label_here_still_uses_current():
+    a = Assembler(x64)
+    lbl = Label()
+    assert lbl.owner is None
+    with pytest.raises(JitaError, match="no active Assembler"):
+        lbl.here()
+    with a:
+        lbl.here()
+    assert lbl.section is a.cur
+
+
+def test_align_zero_fills_data_sections():
+    a = Assembler(x64)
+    a.bytes(b"\x01")
+    a.align(8)
+    assert a.cur.buf == b"\x01" + bytes(7)
+    x64.ret(asm=a)
+    a.align(4)
+    assert a.cur.buf[8:] == b"\xc3" + x64.ARCH.nop_fill(3)
+    with a.section("data"):
+        a.byte(1)
+        a.align(4)
+        a.align(8, b"\xcc")
+    assert a.sections["data"].buf == b"\x01" + bytes(3) + b"\xcc" * 4
+
+
+def test_image_address_rejects_label_bound_after_link():
+    a = Assembler(x64)
+    a.bytes(b"\x90" * 4)
+    end = a.label("end")  # bound before linking at the section end
+    img = a.link(0x1000)
+    assert img.section_sizes == {"code": 4}
+    assert img.address(end) == 0x1004
+    late_end = a.label()  # same offset, but bound after linking
+    with pytest.raises(LinkError, match="bound after linking"):
+        img.address(late_end)
+    a.bytes(b"\x90")
+    with pytest.raises(LinkError, match="bound after linking"):
+        img.address(a.label())
+    with a.section("data"):
+        with pytest.raises(LinkError, match="bound after linking"):
+            img.address(a.label())
+
+
+def test_star_exports():
+    ns = {}
+    exec("from jita import *", ns)
+    names = set(ns) - {"__builtins__"}
+    assert {"Assembler", "Label", "Extern", "Image", "Module", "PcLabels", "current"} <= names
+    assert {"LinkError", "LoadError", "EncodeError", "JitaError"} <= names
+    ns = {}
+    exec("from jita.core import *", ns)
+    names = set(ns) - {"__builtins__"}
+    assert {"Assembler", "Section", "Image", "link", "ABS64", "REL32", "Hole"} <= names
+    # No submodules leak through the star import.
+    import types
+
+    assert not [n for n in names if isinstance(ns[n], types.ModuleType)]
+    assert not names & {"arch", "assembler", "errors", "label", "operand", "patch", "section"}

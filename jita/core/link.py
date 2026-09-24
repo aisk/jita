@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
 from .errors import LinkError
-from .label import Extern, Label
+from .label import Extern, Label, _bind_seq
 
 if TYPE_CHECKING:
     from .assembler import Assembler
@@ -29,6 +29,11 @@ class Image:
     # Section name -> weak reference to the Section object, so labels bound
     # in another assembler's section of the same name are rejected.
     sections: dict[str, weakref.ref[Section]] = field(default_factory=dict, repr=False)
+    # Section name -> size in bytes at link time.
+    section_sizes: dict[str, int] = field(default_factory=dict)
+    # Last value of the global label bind counter at link time. Labels
+    # bound later are not part of this image.
+    bind_seq: int = 0
 
     def address(self, label: Label | str) -> int:
         if isinstance(label, str):
@@ -39,9 +44,16 @@ class Image:
         if not label.bound:
             raise LinkError(f"label {label} is never bound")
         name = label.section.name
+        size = self.section_sizes.get(name)
+        if size is None:
+            raise LinkError(f"{label!r}: label bound after linking (section unknown to this image)")
         ref = self.sections.get(name)
         if ref is None or ref() is not label.section:
             raise LinkError(f"{label!r} is bound in a different assembler")
+        # A label at the very end of a section (offset == size) is fine if
+        # it was bound before linking, so the bind order decides that case.
+        if label.offset > size or label._seq > self.bind_seq:
+            raise LinkError(f"{label!r}: label bound after linking")
         return self.base + self.section_offsets[name] + label.offset
 
 
@@ -115,4 +127,13 @@ def link(asm: Assembler, base: int, externs: Mapping[str, int] | None = None) ->
         if lbl.name is not None
     }
     sections = {name: weakref.ref(sec) for name, sec in asm.sections.items()}
-    return Image(base, bytes(out), offsets, symbols, exec_size, page_size, sections)
+    sizes = {name: len(sec.buf) for name, sec in asm.sections.items()}
+    return Image(
+        base, bytes(out), offsets, symbols, exec_size, page_size, sections, sizes, _last_seq()
+    )
+
+
+def _last_seq() -> int:
+    # Draw a value from the bind counter: every label bound so far has a
+    # smaller one, every label bound later a larger one.
+    return next(_bind_seq)

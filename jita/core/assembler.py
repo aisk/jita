@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
-from .label import Extern, Label, PcLabels
+from .label import Extern, Label, PcLabels, _bind_seq
 from .operand import Hole
 from .patch import ABS_BY_SIZE, Patch, PatchKind
 from .section import Section
@@ -91,7 +91,7 @@ class Assembler:
         self.arch: Arch = getattr(arch, "ARCH", arch)
         self.sections: dict[str, Section] = {}
         self.cur: Section = self._get_section("code")
-        self.pc = PcLabels()
+        self.pc = PcLabels(self)
         self.labels: list[Label] = []  # bound labels, in bind order
         self._symbols: dict[str, Label] = {}
 
@@ -165,17 +165,20 @@ class Assembler:
     def bind(self, label: Label) -> Label:
         if label.bound:
             raise LinkError(f"{label!r} is already bound")
+        if label.owner is not None and label.owner is not self:
+            raise LinkError(f"{label!r} belongs to another assembler")
         if label.name is not None:
             if label.name in self._symbols:
                 raise LinkError(f"duplicate label name {label.name!r}")
             self._symbols[label.name] = label
         label.section, label.offset = self.cur, self.cur.pos()
+        label._seq = next(_bind_seq)
         self.labels.append(label)
         return label
 
     def label(self, name: str | None = None) -> Label:
         """Create a label and bind it here."""
-        return self.bind(Label(name))
+        return self.bind(Label(name, owner=self))
 
     # data directives
 
@@ -208,14 +211,16 @@ class Assembler:
 
     def align(self, n: int, fill: bytes | None = None) -> None:
         """Pad to a multiple of n. `fill` is repeated; None uses the arch's
-        NOP padding. Also raises the section alignment to at least n."""
+        NOP padding in sections that contain instructions and zero bytes
+        in pure data sections. Also raises the section alignment to at
+        least n."""
         _check_pow2(n)
         self.cur.align = max(self.cur.align, n)
         pad = -self.pos() % n
         if not pad:
             return
         if fill is None:
-            self.emit(self.arch.nop_fill(pad))
+            self.emit(self.arch.nop_fill(pad) if self.cur.insns else bytes(pad))
         elif not fill:
             raise ValueError("align fill must not be empty")
         else:
