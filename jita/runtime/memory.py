@@ -30,12 +30,17 @@ class ExecMemory:
     def __init__(self, size: int, icache_flush: Callable[[int, int], None] | None = None):
         if sys.platform == "win32":
             raise NotImplementedError("jita: executable memory on Windows is not implemented yet")
+        if size < 0:
+            raise LoadError(f"cannot map a negative size ({size})")
         page = mmap.PAGESIZE
         self.size = max(page, -(-size // page) * page)
         self._icache_flush = icache_flush
-        self._map: mmap.mmap | None = mmap.mmap(
-            -1, self.size, prot=mmap.PROT_READ | mmap.PROT_WRITE
-        )
+        try:
+            self._map: mmap.mmap | None = mmap.mmap(
+                -1, self.size, prot=mmap.PROT_READ | mmap.PROT_WRITE
+            )
+        except (OSError, OverflowError) as e:
+            raise LoadError(f"cannot map {self.size:#x} bytes: {e}") from e
         anchor = ctypes.c_char.from_buffer(self._map)
         self.address = ctypes.addressof(anchor)
         del anchor  # release the buffer export so the map can be closed

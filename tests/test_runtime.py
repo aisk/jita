@@ -279,3 +279,39 @@ def test_closed_module_rejects_use():
         with pytest.raises(LoadError, match="closed"):
             call()
     mod.close()  # double close is a no-op
+
+
+def test_image_outlives_assembler():
+    # Image only keeps weak references to sections, but a live label keeps
+    # its section alive, so the lookup still works after the assembler is gone.
+    import gc
+
+    a = Assembler(x64)
+    a.bytes(b"\x90" * 4)
+    lbl = a.label("end")
+    img = a.link(0x1000)
+    del a
+    gc.collect()
+    assert img.address(lbl) == 0x1004
+    assert img.address("end") == 0x1004
+
+
+def test_exec_memory_errors_are_load_errors():
+    with pytest.raises(LoadError, match="negative"):
+        ExecMemory(-1)
+    with pytest.raises(LoadError, match="cannot map"):
+        ExecMemory(1 << 70)
+
+
+def test_only_writable_sections():
+    a = Assembler(x64)
+    with a.section("vars", writable=True):
+        a.label("v")
+        a.qword(5)
+    with a.load() as mod:
+        assert mod.image.exec_size == 0
+        assert mod.image.section_offsets["vars"] == 0
+        cell = ctypes.c_int64.from_address(mod.address("v"))
+        assert cell.value == 5
+        cell.value = 6
+        assert cell.value == 6

@@ -6,6 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from ..core.arch import Arch
+from . import insns as _insns
+from . import mem as _mem
+from . import regs as _regs
 from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
 from .mem import *  # noqa: F403
@@ -43,3 +46,7 @@ class X64Arch(Arch):
 
 
 ARCH = X64Arch()
+
+# Keep `from jita.x64 import *` to registers, size prefixes, memory operands,
+# mnemonics and ARCH; helper imports and submodule names are not exported.
+__all__ = ["ARCH", "X64Arch", *_insns.__all__, *_mem.__all__, *_regs.__all__]

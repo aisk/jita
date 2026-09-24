@@ -222,6 +222,8 @@ class Assembler:
             self.emit((fill * (pad // len(fill) + 1))[:pad])
 
     def space(self, n: int, fill: int = 0) -> None:
+        if n < 0:
+            raise ValueError(f"space size must not be negative, got {n}")
         self.emit(bytes([fill]) * n)
 
     # mnemonics as methods

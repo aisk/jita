@@ -887,3 +887,48 @@ def test_bound_insn_attributes():
     assert a.jz.short.__doc__ == jz.short.__doc__
     a.jz.short(a.label())
     assert bytes(a.cur.buf).hex() == "7400"
+
+
+def test_star_export_is_limited():
+    ns: dict = {}
+    exec("from jita.x64 import *", ns)
+    for leaked in ("annotations", "Any", "Callable", "Arch", "mem", "regs", "insns", "table", "encoder"):
+        assert leaked not in ns, leaked
+    for name in ("ARCH", "mov", "and_", "rax", "ah", "st0", "qword", "ptr", "MemExpr", "gp64"):
+        assert name in ns, name
+    assert "int" not in ns and "int_" in ns
+
+
+def test_absolute_address_unsigned_spelling():
+    # 0xffffffff80000000 is the sign-extended disp32 -0x80000000.
+    assert encode(mov, rax, qword[0xFFFFFFFF80000000])[0] == encode(mov, rax, qword[-0x80000000])[0]
+    assert encode(mov, rax, qword[0xFFFFFFFFFFFFFFF8])[0].hex() == "488b0425f8ffffff"
+    with pytest.raises(EncodeError, match="use mov64"):
+        encode(mov, rax, qword[0xFFFFFFFF7FFFFFFF])
+    with pytest.raises(EncodeError, match="use mov64"):
+        encode(mov, rax, qword[0x80000000])
+
+
+@requires_oracle
+def test_absolute_address_unsigned_spelling_against_gas():
+    code = encode(mov, rax, qword[0xFFFFFFFF80000000])[0]
+    assert code == assemble("mov rax, qword ptr [0xffffffff80000000]")
+
+
+@needs_x64_host
+def test_exec_rip_relative_with_immediates():
+    # Each store has a different immediate size after the rip-relative disp.
+    a = Assembler(x64)
+    with a:
+        d = Label()
+        mov(dword[rip + d], 0x12345678)
+        mov(word[rip + d + 4], 0x9ABC)
+        mov(byte[rip + d + 6], 0xDE)
+        add(byte[rip + d + 7], 1)
+        mov(rax, qword[rip + d])
+        ret()
+        with a.section("data", writable=True):
+            d.here()
+            a.qword(0)
+    with a.load() as mod:
+        assert mod.function(ctypes.c_uint64)() == 0x01DE9ABC12345678

@@ -31,6 +31,8 @@ def test_data_directives():
         a.byte(256)
     with pytest.raises(EncodeError):
         a.word(-40000)
+    with pytest.raises(ValueError):
+        a.space(-1)
 
 
 def test_align_nop_and_fill():

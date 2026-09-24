@@ -41,7 +41,8 @@ Deliberate differences from DynASM:
   on x64 is a plain nop and does not zero-extend eax into rax.
 - Absolute memory operands (``qword[addr]``) may carry a 64 bit address,
   but only ``mov64`` (A0-A3 moffs64) can encode one; ModRM forms reject
-  addresses outside int32.
+  addresses that are not a sign-extended int32 (``0xffffffff80000000`` is
+  accepted as ``-0x80000000``).
 - Combining ah/ch/dh/bh with any operand that requires a REX prefix is an
   error (DynASM only checks the spl/bpl/sil/dil mix).
 
@@ -376,6 +377,10 @@ class _Encoder:
             else:
                 # [disp] -> (0, s, esp) (0, esp, ebp)
                 self.putb(self.modrm(0, 4, 5))
+            if disp >= 1 << 63:
+                # An address spelled as unsigned 64 bits (0xffffffff80000000)
+                # is the same address as its sign-extended disp32 form.
+                disp -= 1 << 64
             if not -(1 << 31) <= disp < (1 << 31):
                 raise self.fail("absolute address does not fit in 32 bits, use mov64")
             self.putd(disp)

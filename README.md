@@ -7,7 +7,8 @@ data directives as ordinary Python calls; jita encodes them, links labels
 and external symbols, and loads the result into executable memory that you
 can call through `ctypes`. The instruction templates are a port of DynASM's
 x86 table (`dasm_x86.lua`, MIT license, Copyright (C) Mike Pall), so
-encodings match what DynASM would emit. jita has no runtime dependencies.
+encodings match what DynASM would emit, apart from the differences listed
+below. jita has no runtime dependencies.
 
 ## Install and run
 
@@ -93,11 +94,17 @@ Scalar SSE instructions need an explicitly sized memory operand, e.g.
 - Immediates are range checked by value. `add rax, 0xffffffff` is an
   error instead of quietly becoming `add rax, -1`. `mov r64, imm` switches
   to the 64 bit `movabs` form when the value does not fit in 32 bits.
+- A few fixes where DynASM's x64 output is wrong: `xchg eax, eax` is
+  `87 C0` rather than the `90` nop, and 32 bit address registers (`[eax]`)
+  get the `0x67` prefix.
+- Some instructions DynASM lacks are added: `xadd`, `cmpxchg`,
+  `cmpxchg8b`, `cmpxchg16b`, `ud2`, `hlt` and the `movsq`/`cmpsq`/`stosq`/
+  `lodsq`/`scasq` string ops. They combine with `lock()` and `rep()`.
 - Everything is known when an instruction is encoded, so there is no
   preprocessor, no action list and no separate link step to call by hand.
 
 ## Status
 
-x64 only. Tested on Linux; macOS uses the same mmap/mprotect path, and
-executable memory on Windows is not implemented yet. aarch64 is planned
-next.
+x64 only. Tested on Linux. macOS uses the same mmap/mprotect path but is
+untested, and executable memory on Windows is not implemented yet. aarch64
+is planned next.
