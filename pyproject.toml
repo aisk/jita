@@ -1,0 +1,23 @@
+[project]
+name = "jita"
+version = "0.1.0"
+description = "Runtime x64 code generation at the abstraction level of DynASM"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "jita"
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

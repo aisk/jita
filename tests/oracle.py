@@ -1,0 +1,259 @@
+"""Oracle for testing jita's x64 encoder against GNU binutils.
+
+This module assembles Intel-syntax text with GNU ``as`` and disassembles raw
+machine code with ``objdump``, so encoder tests can check that jita produces
+the same bytes (or at least round-trips to the same instruction text) as the
+reference toolchain.
+
+Normalization rules (shared by `normalize()` and the text produced by
+`disassemble()`, so both sides of a comparison go through the same pipeline):
+
+- Strip everything from a ``#`` character onward (objdump comment, e.g. a
+  resolved rip-relative target: ``mov rax,QWORD PTR [rip+0x8]  # 0xf``).
+- Lowercase the whole line. This normalizes mnemonics, registers, size
+  keywords such as ``QWORD PTR`` -> ``qword ptr``, and hex digits.
+- Collapse any run of whitespace to a single space, then strip the ends.
+- Remove whitespace around ``,``, ``*``, ``+`` and ``-`` (objdump never
+  spaces any of these).
+- Convert bare decimal integers (immediates and displacements, e.g. the `8`
+  in `[rbx+8]` or `1` in `add eax, 1`) to lowercase `0x..` hex, matching
+  objdump's convention of always rendering immediates/displacements in hex.
+  A number is only converted when it is not already part of a `0x..` token
+  and not a SIB scale factor (`reg*N`, which objdump always prints in
+  decimal, e.g. `[rbx+rcx*4+0x10]`).
+
+Known limitations:
+
+- Negative immediates are sign/width dependent in objdump's output (e.g.
+  `mov eax, -1` disassembles as `mov eax,0xffffffff`, not `mov eax,-0x1`,
+  because objdump renders the full zero/sign-extended machine value).
+  `normalize()` has no operand-width information and will only flip the
+  sign of the literal, so round trips with negative immediates on operands
+  narrower than 64 bits should use the pre-computed unsigned hex form, or
+  expect `roundtrip()` to report a mismatch.
+- A GAS Intel-syntax memory operand omits `PTR` when the size is inferable
+  from a register operand (e.g. `mov rax, [rbx+8]`), but objdump always
+  prints it. Source text passed to `assemble()`/`roundtrip()` should include
+  an explicit size (`qword ptr`, `dword ptr`, ...) whenever the operand size
+  is not otherwise obvious, to match objdump's rendering.
+- `roundtrip()` expects one instruction per source line, with any labels on
+  their own line (a line matching `label:` is skipped rather than compared
+  to an instruction); a label sharing a line with an instruction is not
+  handled specially.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+import pytest
+
+__all__ = [
+    "OracleError",
+    "assemble",
+    "disassemble",
+    "normalize",
+    "roundtrip",
+    "available",
+    "requires_oracle",
+]
+
+
+class OracleError(RuntimeError):
+    """Raised when the external assembler/disassembler pipeline fails."""
+
+
+AS = "/usr/bin/as"
+OBJCOPY = "/usr/bin/objcopy"
+OBJDUMP = "/usr/bin/objdump"
+
+# text -> assembled bytes, so repeated calls with the same source (common in
+# parametrized tests) don't keep shelling out to `as`/`objcopy`.
+_assemble_cache: dict[str, bytes] = {}
+
+# A disassembly line looks like "   0:\t48 8b 43 08          \tmov    rax,...".
+# A continuation line for a long instruction has no third (mnemonic) field:
+# "  1c:\t56 34 12 ".
+_LINE_RE = re.compile(r"^\s*[0-9a-f]+:\t(.*)$")
+
+# Bare decimal integer, not part of a "0x.." token (word-boundary logic keeps
+# us out of hex literals: there is no \b between the "0"/"x" and the digits
+# that follow) and not a SIB scale factor (the "4" in "rcx*4").
+_DECIMAL_RE = re.compile(r"(?<!\*)\b\d+\b")
+
+# A label-only line, e.g. "1:" or "loop_start:".
+_LABEL_RE = re.compile(r"^[\w.$]+:$")
+
+
+def available() -> bool:
+    """Return True if `as`, `objcopy` and `objdump` are present and executable."""
+    return all(os.access(path, os.X_OK) for path in (AS, OBJCOPY, OBJDUMP))
+
+
+requires_oracle = pytest.mark.skipif(
+    not available(), reason="as/objcopy/objdump not available"
+)
+
+
+def assemble(text: str) -> bytes:
+    """Assemble Intel-syntax x64 text and return the raw machine code bytes.
+
+    `text` is wrapped in `.intel_syntax noprefix` / `.text` and assembled
+    with `as --64` in a temporary directory; the resulting object file is
+    reduced to raw bytes with `objcopy -O binary`. `text` may contain
+    multiple lines (multiple instructions, labels, etc).
+
+    Results are cached by the exact `text` given. Raises `OracleError`
+    (with `as`'s stderr as the message) if assembly fails.
+    """
+    if text in _assemble_cache:
+        return _assemble_cache[text]
+
+    source = ".intel_syntax noprefix\n.text\n" + text
+    if not source.endswith("\n"):
+        source += "\n"
+
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        tmp = Path(tmp_dir)
+        asm_path = tmp / "in.s"
+        obj_path = tmp / "out.o"
+        bin_path = tmp / "out.bin"
+        asm_path.write_text(source)
+
+        as_result = subprocess.run(
+            [AS, "--64", "-o", str(obj_path), str(asm_path)],
+            capture_output=True,
+            text=True,
+        )
+        if as_result.returncode != 0:
+            raise OracleError(as_result.stderr)
+
+        objcopy_result = subprocess.run(
+            [OBJCOPY, "-O", "binary", str(obj_path), str(bin_path)],
+            capture_output=True,
+            text=True,
+        )
+        if objcopy_result.returncode != 0:
+            raise OracleError(objcopy_result.stderr)
+
+        code = bin_path.read_bytes()
+
+    _assemble_cache[text] = code
+    return code
+
+
+def disassemble(code: bytes) -> list[str]:
+    """Disassemble raw x64 machine code and return one normalized line per
+    instruction.
+
+    Runs `objdump -D -b binary -m i386:x86-64 -M intel` on `code` and, for
+    each decoded instruction, strips the address and hex-byte columns and
+    normalizes the remaining text (see module docstring). Continuation lines
+    that objdump emits for instructions whose encoding is too long for one
+    line (address + hex bytes only, no mnemonic) are skipped, since the
+    mnemonic and operands already appeared on the instruction's first line.
+    """
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        bin_path = Path(tmp_dir) / "in.bin"
+        bin_path.write_bytes(code)
+
+        result = subprocess.run(
+            [
+                OBJDUMP,
+                "-D",
+                "-b",
+                "binary",
+                "-m",
+                "i386:x86-64",
+                "-M",
+                "intel",
+                str(bin_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise OracleError(result.stderr)
+        output = result.stdout
+
+    lines: list[str] = []
+    for raw_line in output.splitlines():
+        match = _LINE_RE.match(raw_line)
+        if match is None:
+            continue
+        rest = match.group(1)
+        if rest.strip() == "...":
+            # objdump elides a run of identical (typically all-zero) bytes.
+            continue
+        parts = rest.split("\t")
+        if len(parts) < 2:
+            # Continuation line: only hex bytes, no mnemonic/operand field.
+            continue
+        normalized = _normalize_line(parts[1])
+        if normalized:
+            lines.append(normalized)
+    return lines
+
+
+def _dec_to_hex(match: re.Match[str]) -> str:
+    return hex(int(match.group(0)))
+
+
+def _normalize_line(text: str) -> str:
+    text = text.split("#", 1)[0]
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s*,\s*", ",", text)
+    text = re.sub(r"\s*\*\s*", "*", text)
+    text = re.sub(r"\s*\+\s*", "+", text)
+    text = re.sub(r"\s*-\s*", "-", text)
+    text = _DECIMAL_RE.sub(_dec_to_hex, text)
+    return text
+
+
+def normalize(text: str) -> str:
+    """Normalize a single Intel-syntax instruction string.
+
+    Applies the same normalization as `disassemble()` (see module
+    docstring), so that for a single-instruction round trip
+    `normalize(src) == disassemble(assemble(src))[0]`.
+    """
+    return _normalize_line(text)
+
+
+def roundtrip(text: str, code: bytes) -> None:
+    """Assert that disassembling `code` yields exactly the normalized
+    instruction lines of `text`.
+
+    `text` may contain multiple lines; blank lines and label-only lines
+    (`some_label:`) are skipped, and every remaining line is normalized and
+    compared, in order, against `disassemble(code)`. On mismatch, raises
+    `AssertionError` with a side-by-side diff of expected vs. actual lines
+    and the hex of `code`.
+    """
+    expected: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or _LABEL_RE.match(line):
+            continue
+        expected.append(normalize(line))
+
+    actual = disassemble(code)
+
+    if actual != expected:
+        width = max((len(e) for e in expected), default=0)
+        rows = []
+        for i in range(max(len(expected), len(actual))):
+            e = expected[i] if i < len(expected) else "<missing>"
+            a = actual[i] if i < len(actual) else "<missing>"
+            marker = "==" if e == a else "!!"
+            rows.append(f"  {marker} expected: {e!r:<{width + 2}} actual: {a!r}")
+        diff = "\n".join(rows)
+        raise AssertionError(
+            f"roundtrip mismatch for text={text!r}\n"
+            f"code hex: {code.hex()}\n{diff}"
+        )
