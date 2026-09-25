@@ -14,7 +14,7 @@ from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
-from .typed import typed
+from .structs import typed
 
 # Recommended multi-byte NOP sequences (Intel SDM, NOP instruction).
 _NOPS = (

@@ -2,14 +2,16 @@
 
 import ctypes
 import platform
+import re
+import types
 
 import pytest
-from oracle import assemble, requires_oracle
+from oracle import assemble, disassemble, normalize, requires_oracle
 
 import jita.x64 as x64
-from jita import Assembler, EncodeError
+from jita import Assembler, EncodeError, Fragment, Hole
 from jita.x64 import *  # noqa: F403
-from jita.x64.typed import Typed, TypedArray
+from jita.x64.structs import Typed, TypedArray
 
 del test  # noqa: F821, the x64 mnemonic, not a pytest test
 
@@ -189,6 +191,32 @@ def test_attribute_names_shadowed_by_view_properties():
     assert b["ctype"] == byte[rax + 12]
 
 
+def test_underscore_fields_and_dir():
+    class Padded(ctypes.Structure):
+        _fields_ = [("_pad", ctypes.c_uint32), ("addr", ctypes.c_void_p), ("_n", ctypes.c_int16)]
+
+    v = typed(rax, Padded)
+    assert v._pad == dword[rax]
+    assert v._n == word[rax + 16]
+    assert v["addr"] == qword[rax + 8]
+    names = dir(v)
+    assert len(names) == len(set(names))
+    assert set(names) == {"_pad", "_n", "addr", "ctype", "size"}
+    with pytest.raises(AttributeError, match="fields: _pad, addr, _n"):
+        v._missing
+    with pytest.raises(AttributeError):
+        v.__missing__
+
+
+def test_typed_is_the_function():
+    import jita.x64.structs  # noqa: F401
+
+    assert isinstance(x64.typed, types.FunctionType)
+    from jita.x64 import typed as t
+
+    assert t is x64.typed
+
+
 def test_errors():
     with pytest.raises(EncodeError, match="bit field"):
         typed(rax, Bits).f
@@ -296,3 +324,62 @@ def test_execute_reads_and_writes_structure():
         assert pt.y == 7
         assert list(pt.v) == [1.0, 2.0, 7.0, 4.0]
         assert pt.next == ctypes.addressof(pt) + Point.v.offset + 3 * 8
+
+
+# -- register holes (Fragments) ---------------------------------------------
+
+S_HOLE, I_HOLE = Hole.gp64("s"), Hole.gp64("i")
+
+
+def _canon(line: str) -> str:
+    """objdump text of the fixed-length hole form -> plain instruction text."""
+    line = re.sub(r"^rex(\.\w+)? ", "", line)
+    return line.replace("+riz*1", "").replace("+0x0]", "]")
+
+
+def test_hole_base_and_index_operands():
+    p = typed(S_HOLE, Point)
+    assert p.y == dword[S_HOLE + 4]
+    assert p.v[I_HOLE] == qword[S_HOLE + I_HOLE * 8 + 24]
+    assert typed(rdi, ctypes.c_int32 * 4)[I_HOLE] == dword[rdi + I_HOLE * 4]
+    assert typed(S_HOLE + 8, Point).v[rcx] == qword[S_HOLE + rcx * 8 + 32]
+    with pytest.raises(EncodeError, match="only gp64 holes"):
+        typed(Hole.gp32("e"), Point)
+    with pytest.raises(EncodeError, match="only gp64 holes"):
+        typed(rdi, ctypes.c_int32 * 4)[Hole.gp32("e")]
+    with pytest.raises(TypeError):
+        typed(Hole.imm32("k"), Point)
+    with pytest.raises(EncodeError, match="already has an index"):
+        typed(rax + rbx, Point).v[I_HOLE]
+
+
+def _struct_fragment() -> Fragment:
+    d = Hole.gp64("d")
+    p = typed(S_HOLE, Point)
+    frag = Fragment(x64)
+    with frag:
+        mov(d, p.next)
+        movzx(eax, p.tag)
+        add(eax, p.y)
+        movsd(xmm0, p.v[I_HOLE])
+        mov(p.v[2], d)
+        lea(d, p.v.addr)
+        mov(dword[rdi + I_HOLE * 4], eax)
+    return frag
+
+
+@requires_oracle
+def test_fragment_through_hole_base_and_index():
+    frag = _struct_fragment()
+    assert set(frag.holes) == {"d", "s", "i"}
+    a = Assembler(x64)
+    regs = [(rbx, rdi, rcx), (r12, rsp, r13), (rax, rbp, r8), (r15, r13, rbp), (rsi, r12, r15)]
+    for d, s, i in regs:
+        frag.instantiate(a, d=d, s=s, i=i)
+    code = bytes(a.cur.buf)
+    assert len(code) == len(frag) * len(regs)
+    want = [normalize(f"{mn} {', '.join(map(str, ops))}") for _, _, mn, ops in a.cur.insns]
+    assert [_canon(line) for line in disassemble(code)] == want
+    n = len(frag.cur.insns)
+    assert want[n + 2] == "add eax,dword ptr [rsp+0x4]"
+    assert want[4 * n + 3] == "movsd xmm0,qword ptr [r12+r15*8+0x18]"
