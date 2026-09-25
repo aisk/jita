@@ -44,8 +44,10 @@ Known limitations:
 
 from __future__ import annotations
 
+import glob
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -60,6 +62,9 @@ __all__ = [
     "roundtrip",
     "available",
     "requires_oracle",
+    "aarch64_available",
+    "aarch64_assembler",
+    "requires_aarch64_oracle",
 ]
 
 
@@ -99,8 +104,11 @@ requires_oracle = pytest.mark.skipif(
 )
 
 
-def assemble(text: str) -> bytes:
+def assemble(text: str, arch: str = "x64") -> bytes:
     """Assemble Intel-syntax x64 text and return the raw machine code bytes.
+
+    With `arch="aarch64"`, assemble GNU syntax aarch64 text instead (see
+    `aarch64_assembler()`).
 
     `text` is wrapped in `.intel_syntax noprefix` / `.text` and assembled
     with `as --64` in a temporary directory; the resulting object file is
@@ -110,6 +118,10 @@ def assemble(text: str) -> bytes:
     Results are cached by the exact `text` given. Raises `OracleError`
     (with `as`'s stderr as the message) if assembly fails.
     """
+    if arch == "aarch64":
+        return _assemble_aarch64(text)
+    if arch != "x64":
+        raise ValueError(f"unknown arch {arch!r}")
     if text in _assemble_cache:
         return _assemble_cache[text]
 
@@ -143,6 +155,71 @@ def assemble(text: str) -> bytes:
         code = bin_path.read_bytes()
 
     _assemble_cache[text] = code
+    return code
+
+
+# aarch64: GNU cross binutils when installed, otherwise LLVM's integrated
+# assembler (llvm-mc), which is often present as part of clang.
+
+
+def _llvm_tool(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    for path in sorted(glob.glob(f"/usr/lib/llvm-*/bin/{name}"), reverse=True):
+        if os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def aarch64_assembler() -> tuple[str, list[str], str] | None:
+    """(name, assembler command, objcopy) for aarch64, or None."""
+    gas = shutil.which("aarch64-linux-gnu-as")
+    gobjcopy = shutil.which("aarch64-linux-gnu-objcopy")
+    if gas and gobjcopy:
+        return ("gas", [gas, "-march=armv8.5-a"], gobjcopy)
+    mc, objcopy = _llvm_tool("llvm-mc"), _llvm_tool("llvm-objcopy")
+    if mc and objcopy:
+        return ("llvm-mc", [mc, "-triple=aarch64", "-filetype=obj", "-mattr=+v8.5a"], objcopy)
+    return None
+
+
+def aarch64_available() -> bool:
+    return aarch64_assembler() is not None
+
+
+requires_aarch64_oracle = pytest.mark.skipif(
+    not aarch64_available(), reason="no aarch64 assembler (aarch64-linux-gnu-as or llvm-mc)"
+)
+
+_aarch64_cache: dict[str, bytes] = {}
+
+
+def _assemble_aarch64(text: str) -> bytes:
+    if text in _aarch64_cache:
+        return _aarch64_cache[text]
+    tools = aarch64_assembler()
+    if tools is None:
+        raise OracleError("no aarch64 assembler available")
+    _, as_cmd, objcopy = tools
+    source = ".text\n" + text
+    if not source.endswith("\n"):
+        source += "\n"
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        tmp = Path(tmp_dir)
+        (tmp / "in.s").write_text(source)
+        r = subprocess.run([*as_cmd, "-o", str(tmp / "out.o"), str(tmp / "in.s")], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OracleError(r.stderr)
+        r = subprocess.run(
+            [objcopy, "-O", "binary", "-j", ".text", str(tmp / "out.o"), str(tmp / "out.bin")],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            raise OracleError(r.stderr)
+        code = (tmp / "out.bin").read_bytes()
+    _aarch64_cache[text] = code
     return code
 
 
