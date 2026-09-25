@@ -109,6 +109,7 @@ def test_call_extern():
     cb_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int)
     cb = cb_type(lambda v: v * 3)
     cb_addr = ctypes.cast(cb, ctypes.c_void_p).value
+    assert cb_addr is not None
 
     a = Assembler(x64)
     a.bytes(b"\x48\x83\xec\x08")  # sub rsp, 8 (align stack)

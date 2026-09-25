@@ -1,0 +1,18 @@
+# mypy stubtest allowlist for jita.x64 and jita.aarch64 (tests/test_typing.py).
+
+# Mnemonic functions take `*ops` at runtime; the stubs list the accepted
+# operand classes as positional parameters, and the branches with `.short`
+# or `b.<cond>` are Protocol typed variables.
+jita\.x64\.insns\.(?!nop_fill$|X64Assembler$)[a-z]\w*
+jita\.aarch64\.insns\.(?!Aarch64Assembler$)[a-z]\w*
+
+# Assembler methods come from `Assembler.__getattr__` at runtime.
+jita\.x64\.insns\.X64Assembler\.[a-z]\w*
+jita\.aarch64\.insns\.Aarch64Assembler\.[a-z]\w*
+
+# stubtest does not model PEP 695 generics and type aliases in source modules.
+jita\.x64\.mem\.SizePrefix\.__type_params__
+jita\.aarch64\.regs\.RegMod\.__type_params__
+jita\.x64\.mem\.Mem
+jita\.x64\.regs\.Gp
+jita\.aarch64\.regs\.(Cond|Fp|Gp)

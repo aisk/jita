@@ -160,7 +160,7 @@ def test_abs32_overflow_and_addend():
 def test_patch_target_must_be_a_label_or_extern():
     a = Assembler(x64)
     with pytest.raises(TypeError):
-        a.emit_patch(ABS32, 5)
+        a.emit_patch(ABS32, 5)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     assert a.cur.buf == b"" and a.cur.patches == []
 
 
@@ -169,7 +169,7 @@ def test_add_patch_is_the_primitive():
     # rejects the patch; add_patch records over bytes already emitted.
     a = Assembler(x64)
     with pytest.raises(TypeError):
-        a.emit_patch(ABS32, 5)
+        a.emit_patch(ABS32, 5)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError):
         a.emit_patch(SLOT_REL32, Label())
     assert a.cur.buf == b"" and a.cur.patches == []
@@ -234,15 +234,17 @@ def test_missing_mnemonic():
 
 
 def test_method_delegation_binds_asm():
-    calls = []
+    calls: list[tuple[object, ...]] = []
 
     def fake(*ops, asm=None):
         calls.append((ops, asm))
 
-    fake.short = lambda *ops, asm=None: calls.append(("short", ops, asm))
+    setattr(fake, "short", lambda *ops, asm=None: calls.append(("short", ops, asm)))
 
     class FakeArch(x64.X64Arch):
-        insns = {"fake": fake}
+        @property
+        def insns(self):
+            return {"fake": fake}
 
     a = Assembler(FakeArch())
     a.fake(1, 2)
@@ -321,7 +323,7 @@ def test_concurrent_contexts_in_asyncio_tasks():
             current()
 
     async def main():
-        log = []
+        log: list[int] = []
         # Two tasks on the same assembler, interleaving enter/exit, plus one
         # on a different assembler.
         await asyncio.gather(worker(a, 1, log), worker(a, 2, log), worker(b, 3, log))
@@ -401,7 +403,7 @@ def test_label_directive_uses_current():
     assert anon.owner is a and anon.name is None and anon.offset == 1
     assert named.name == "n" and a.named("n") is named
     with pytest.raises(TypeError):
-        a.label(3)  # type: ignore[arg-type]
+        a.label(3)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     assert not hasattr(lbl, "here")
 
 
@@ -439,7 +441,7 @@ def test_image_address_rejects_label_bound_after_link():
 
 
 def test_star_exports():
-    ns = {}
+    ns: dict[str, object] = {}
     exec("from jita import *", ns)
     names = set(ns) - {"__builtins__"}
     assert {"Assembler", "Label", "Extern", "Image", "Module", "PcLabels", "current"} <= names
@@ -513,4 +515,4 @@ def test_named_label_rejects_bad_names():
     with pytest.raises(TypeError):
         a.named("")
     with pytest.raises(TypeError):
-        a.named(3)  # type: ignore[arg-type]
+        a.named(3)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]

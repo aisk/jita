@@ -96,7 +96,7 @@ def test_extern_slot_method():
     assert a.cur is a.sections["code"]
     assert a.extern_slot(STRLEN) is slot
     with pytest.raises(TypeError):
-        a.extern_slot("strlen")
+        a.extern_slot("strlen")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
 
 
 def test_slot_alignment_after_manual_data():
@@ -136,7 +136,7 @@ def test_extern_needs_rip_base():
     with pytest.raises(EncodeError):
         qword[rax + STRLEN]
     with pytest.raises(EncodeError):
-        qword[STRLEN]
+        qword[STRLEN]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
     with pytest.raises(EncodeError):
         qword[rip + STRLEN + Label()]
 
@@ -210,6 +210,7 @@ def test_linked_slot_disassembles_to_rip_relative():
 def test_call_strlen_through_slot():
     libc = ctypes.CDLL(None)
     addr = ctypes.cast(libc.strlen, ctypes.c_void_p).value
+    assert addr is not None
     a = Assembler(x64)
     with a:
         sub(rsp, 8)
@@ -229,6 +230,7 @@ def test_call_strlen_through_slot():
 def test_tail_call_through_slot():
     libc = ctypes.CDLL(None)
     addr = ctypes.cast(libc.strlen, ctypes.c_void_p).value
+    assert addr is not None
     a = Assembler(x64)
     with a:
         jmp(qword[rip + Extern("strlen", addr)])

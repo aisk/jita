@@ -110,9 +110,10 @@ def _paths(ctype, prefix=()):
                 for path, off, size in _paths(f.type, (*prefix, name)):
                     yield path, f.offset + off, size
     elif issubclass(ctype, ctypes.Array):
-        esize = ctypes.sizeof(ctype._type_)
-        for i in range(ctype._length_):
-            for path, off, size in _paths(ctype._type_, (*prefix, i)):
+        elem, length = getattr(ctype, "_type_"), getattr(ctype, "_length_")
+        esize = ctypes.sizeof(elem)
+        for i in range(length):
+            for path, off, size in _paths(elem, (*prefix, i)):
                 yield path, i * esize + off, size
     else:
         yield prefix, 0, ctypes.sizeof(ctype)
@@ -247,11 +248,11 @@ def test_errors():
     with pytest.raises(EncodeError, match="unsized"):
         typed(qword[rax], Point)
     with pytest.raises(TypeError):
-        typed(0x1000, Point)
+        typed(0x1000, Point)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
     with pytest.raises(TypeError):
         typed(rax, int)
     with pytest.raises(TypeError):
-        typed(rax, Point()).x
+        typed(rax, Point()).x  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
     with pytest.raises(AttributeError):
         typed(rax, Point).x = 1
 

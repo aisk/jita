@@ -55,6 +55,7 @@ def test_sum_loop():
 def test_call_extern_through_literal():
     libc = ctypes.CDLL(None)
     strlen = ctypes.cast(libc.strlen, ctypes.c_void_p).value
+    assert strlen is not None
     a = Assembler()
     with a:
         stp(fp, lr, mem.pre[sp - 16])  # noqa: F405

@@ -42,8 +42,6 @@ Known limitations:
   handled specially.
 """
 
-from __future__ import annotations
-
 import glob
 import os
 import re
@@ -184,7 +182,8 @@ def _llvm_tool(name: str) -> str | None:
     """`name` on PATH, else the newest /usr/lib/llvm-N/bin/`name`, if it runs."""
     if name in _llvm_tools:
         return _llvm_tools[name]
-    candidates = [shutil.which(name)] if shutil.which(name) else []
+    which = shutil.which(name)
+    candidates = [which] if which else []
     candidates += sorted(glob.glob(f"/usr/lib/llvm-*/bin/{name}"), key=_llvm_version, reverse=True)
     found = next((p for p in candidates if os.access(p, os.X_OK) and _runs(p)), None)
     _llvm_tools[name] = found

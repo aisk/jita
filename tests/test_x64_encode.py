@@ -595,7 +595,7 @@ def test_insns_namespace():
     assert {"and_", "or_", "not_", "int_", "mov64", "movabs"} <= set(insns.INSNS)
     assert "and" not in insns.__all__ and "int" not in insns.__all__
     assert x64.and_ is insns.INSNS["and_"]
-    assert jz.short.__qualname__ == "jz.short" and jmp.short
+    assert jz.short.__qualname__ == "jz.short" and callable(jmp.short)
     assert not hasattr(mov, "short")
     assert "in" not in insns.PY_NAMES and "in_" not in insns.INSNS
     assert x64.ARCH.insns is insns.INSNS
@@ -664,6 +664,7 @@ def test_exec_sse_and_data():
 def test_exec_call_extern_and_movabs():
     cb = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(lambda v: v + 1)
     addr = ctypes.cast(cb, ctypes.c_void_p).value
+    assert addr is not None
     a = Assembler(x64)
     with a:
         push(rbx)
@@ -724,7 +725,7 @@ def test_x87_errors():
     with pytest.raises(EncodeError):
         encode(mov, rax, st0)
     with pytest.raises(EncodeError):
-        st1 + 8  # not an address register
+        _ = st1 + 8  # not an address register
 
 
 # -- review fixes ----------------------------------------------------------------
@@ -882,7 +883,7 @@ def test_exec_rep_movsq():
 
 def test_bound_insn_attributes():
     a = Assembler(x64)
-    assert a.mov.__doc__ == mov.__doc__ and "mov" in a.mov.__doc__
+    assert a.mov.__doc__ == mov.__doc__ and "mov" in (a.mov.__doc__ or "")
     assert a.mov.__name__ == "mov"
     assert a.jz.short.__doc__ == jz.short.__doc__
     a.jz.short(a.label())
@@ -890,7 +891,7 @@ def test_bound_insn_attributes():
 
 
 def test_star_export_is_limited():
-    ns: dict = {}
+    ns: dict[str, object] = {}
     exec("from jita.x64 import *", ns)
     for leaked in ("annotations", "Any", "Callable", "Arch", "mem", "regs", "insns", "table", "encoder"):
         assert leaked not in ns, leaked
@@ -983,7 +984,7 @@ def test_string_label_error_messages():
     with pytest.raises(LinkError, match="label x is never bound"):
         a.link()
     with pytest.raises(EncodeError, match=r"use qword\[rip \+ label\]"):
-        qword["x"]
+        qword["x"]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
 
 
 @requires_oracle

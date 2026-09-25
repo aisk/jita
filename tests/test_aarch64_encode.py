@@ -10,6 +10,8 @@ DynASM picks a different but equivalent encoding or accepts a spelling
 the GNU syntax does not.
 """
 
+import platform
+
 import pytest
 from oracle import OracleError, aarch64_assembler, assemble, requires_aarch64_oracle
 
@@ -386,7 +388,7 @@ def test_label_forward(fn, ops, back, fwd):
 
 
 def test_every_mnemonic_is_tested():
-    tested = {c[0].__name__ for c in CASES + LABEL_CASES} | {"adrp"}
+    tested = {getattr(c[0], "__name__") for c in CASES + LABEL_CASES} | {"adrp"}
     names = {k.rpartition("_")[0] for k in MAP_OP} - {"b" + c for c in MAP_COND}
     py = {"and": "and_", "str": "str_"}
     assert {py.get(n, n) for n in names} - tested == set()
@@ -543,10 +545,10 @@ def test_icache_flush(monkeypatch):
 
     arch = A.Aarch64Arch()
     monkeypatch.setattr(A, "_find_clear_cache", lambda: fake)
-    monkeypatch.setattr(A.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     arch.icache_flush(0x1000, 64)
     assert calls == []
-    monkeypatch.setattr(A.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(platform, "machine", lambda: "aarch64")
     arch.icache_flush(0x1000, 64)
     arch.icache_flush(0x2000, 0)
     assert calls == [(0x1000, 0x1040)]
@@ -622,10 +624,10 @@ def test_memory_operands():
         (lambda: mem[x0 + x1 + 8], "index register and an offset"),  # noqa: F405
         (lambda: mem[x0 + x1 + x2], "too many registers"),  # noqa: F405
         (lambda: mem.pre[x0 + x1], "takes an immediate"),  # noqa: F405
-        (lambda: mem.post[x0 + 8], "mem.post"),  # noqa: F405
+        (lambda: mem.post[x0 + 8], "mem.post"),  # type: ignore[index]  # noqa: F405  # pyright: ignore[reportArgumentType]
         (lambda: x0 + x1 << 3, "index << n"),  # noqa: F405
         (lambda: mem[x0 + sp], "memory index"),  # noqa: F405
-        (lambda: mem[8], "base register"),  # noqa: F405
+        (lambda: mem[8], "base register"),  # type: ignore[index]  # noqa: F405  # pyright: ignore[reportArgumentType]
     ],
 )
 def test_memory_operand_errors(build, match):
@@ -731,7 +733,8 @@ _ALIAS_TEXT = {"and_": "and", "str_": "str"}
 
 
 def gnu_text(fn, ops):
-    name = _ALIAS_TEXT.get(fn.__name__, fn.__name__)
+    name = str(fn.__name__)
+    name = _ALIAS_TEXT.get(name, name)
     if name.startswith("b") and name[1:] in MAP_COND:
         name = "b." + name[1:]
 
@@ -756,13 +759,14 @@ def gnu_text(fn, ops):
 @pytest.mark.parametrize("fn, ops, want", CASES, ids=[_case_id(c) for c in CASES])
 def test_oracle(fn, ops, want):
     text = gnu_text(fn, ops)
+    tool = (aarch64_assembler() or ("?",))[0]
     try:
         got = assemble(text, arch="aarch64").hex()
     except OracleError:
-        assert text in DIVERGENT, f"{aarch64_assembler()[0]} rejects {text!r}"
+        assert text in DIVERGENT, f"{tool} rejects {text!r}"
         return
     if got != want:
-        assert text in DIVERGENT, f"{text!r}: jita/DynASM {want}, {aarch64_assembler()[0]} {got}"
+        assert text in DIVERGENT, f"{text!r}: jita/DynASM {want}, {tool} {got}"
 
 
 @requires_aarch64_oracle

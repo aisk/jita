@@ -5,6 +5,7 @@ import ctypes
 import gc
 import platform
 import weakref
+from typing import Any, cast
 
 import pytest
 
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 I64P = ctypes.POINTER(ctypes.c_int64)
-LABS = ctypes.cast(ctypes.CDLL(None).labs, ctypes.c_void_p).value
+LABS = ctypes.cast(ctypes.CDLL(None).labs, ctypes.c_void_p).value or 0
 
 
 def gen_sum():
@@ -56,7 +57,7 @@ def test_assembler_function():
     assert fn(arr, 0) == 0
     assert fn.assembler is a
     assert not fn.module.closed
-    assert ctypes.cast(fn, ctypes.c_void_p).value == fn.module.image.base
+    assert ctypes.cast(cast(Any, fn), ctypes.c_void_p).value == fn.module.image.base
     assert "add" in listing(fn.assembler, fn.module.image)
 
 
@@ -72,7 +73,7 @@ def test_assembler_function_entry():
     assert a.function(ctypes.c_int)() == 1
     second = a.function(ctypes.c_int, entry="second")
     assert second() == 5
-    assert ctypes.cast(second, ctypes.c_void_p).value == second.module.address("second")
+    assert ctypes.cast(cast(Any, second), ctypes.c_void_p).value == second.module.address("second")
 
 
 def test_assembler_function_externs():

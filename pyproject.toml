@@ -10,6 +10,8 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "mypy>=2.3.1",
+    "pyright>=1.1.414",
     "pytest>=9.1.1",
 ]
 
@@ -23,3 +25,18 @@ module-root = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.pyright]
+include = ["jita", "examples", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+# mypy reads `# type: ignore`, pyright reads `# pyright: ignore`, so each
+# checker reports its own unused suppressions.
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.mypy]
+python_version = "3.14"
+files = ["jita", "examples", "tests"]
+warn_unused_ignores = true
+check_untyped_defs = true

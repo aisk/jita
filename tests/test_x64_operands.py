@@ -59,7 +59,7 @@ def test_rsp_index_swaps_or_fails():
     assert m.base is rsp and m.index is rax
     assert qword[rsp * 1].base is rsp
     with pytest.raises(EncodeError):
-        rsp * 2
+        _ = rsp * 2
     with pytest.raises(EncodeError):
         qword[rsp + rsp]
 
@@ -73,14 +73,14 @@ def test_rip_relative_label():
     with pytest.raises(EncodeError):
         qword[rax + lbl]
     with pytest.raises(EncodeError):
-        qword[lbl]
+        qword[lbl]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
     with pytest.raises(EncodeError):
-        rip + rcx
+        _ = rip + rcx
 
 
 def test_mem_validation():
     with pytest.raises(EncodeError):
-        rax * 3
+        _ = rax * 3
     with pytest.raises(EncodeError):
         qword[rax + (1 << 31)]
     qword[rax - (1 << 31)]
@@ -93,11 +93,11 @@ def test_mem_validation():
     with pytest.raises(EncodeError):
         qword[xmm3]
     with pytest.raises(EncodeError, match=r"use qword\[rip \+ label\]"):
-        qword["rax"]  # a str names a label, and labels need a rip base
+        qword["rax"]  # type: ignore[index]  # pyright: ignore[reportArgumentType]  # a str names a label, and labels need a rip base
     with pytest.raises(EncodeError, match="VSIB"):
         qword[rax + xmm3 * 4]
     with pytest.raises(EncodeError, match="VSIB"):
-        ymm(1) * 2
+        _ = ymm(1) * 2
 
 
 def test_absolute_64bit_disp():
@@ -107,7 +107,7 @@ def test_absolute_64bit_disp():
     with pytest.raises(EncodeError):
         qword[1 << 64]
     with pytest.raises(EncodeError, match="int32"):
-        qword[0x100000000] + rax
+        _ = qword[0x100000000] + rax
     with pytest.raises(EncodeError, match="int32"):
         qword[rbx + 0x100000000]
     with pytest.raises(EncodeError, match="int32"):
@@ -117,4 +117,4 @@ def test_absolute_64bit_disp():
 def test_imm():
     assert Imm.coerce(5) == Imm(5) and Imm.coerce(Imm(5)).value == 5
     with pytest.raises(TypeError):
-        Imm("5")
+        Imm("5")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
