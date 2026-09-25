@@ -652,6 +652,8 @@ def test_memory_operand_errors(build, match):
         (add, (x0, x1, x2 << 64), "out of range"),  # noqa: F405
         (add, (x0, x1, x2.uxtx(5)), "0..4"),  # noqa: F405
         (add, (x0, x1, w2.uxtx()), "write the x register"),  # noqa: F405
+        (add, (sp, x1, w2.sxtx(3)), "write the x register"),  # noqa: F405
+        (sub, (x1, sp, w2 << 7), "0..4"),  # noqa: F405
         (and_, (x0, x1, 0), "logical"),  # noqa: F405
         (and_, (w0, w1, 0x100000000), "logical"),  # noqa: F405
         (mov, (x0, 0x12345), "out of range"),  # noqa: F405

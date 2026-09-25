@@ -185,7 +185,7 @@ class _Alt:
             raise self.fail("expected a register", pos=i)
         if q.kind == "sp":
             if i not in self.sp_ok:
-                raise self.fail("sp is not allowed in this position", 2, i)
+                raise self.fail("sp is not allowed in this position", 1, i)
         elif q.code == 31 and q.kind == "gp" and (
             i in self.sp_ok or (shift == 5 and self.ext_form) or (shift == 0 and self.ext_rd_sp)
         ):
@@ -525,7 +525,7 @@ def _parse_template(t: str, alt: _Alt) -> int:
     if alt.rtype not in (None, "x", "w"):
         # jita: "52800000DW" (mov reg, #imm16) has no type check, so DynASM
         # encodes mov d0, #1 as movz w0, #1.
-        raise alt.fail("bad register type", pos=0)
+        raise alt.fail("bad register type", 2, 0)
     return op
 
 
