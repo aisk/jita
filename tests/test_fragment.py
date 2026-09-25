@@ -126,6 +126,9 @@ CASES = [
     ("mov byte [base] imm8", lambda: mov(byte[S + 1], I8), True),  # noqa: F405
     ("shl r64 imm8", lambda: shl(D, I8), True),  # noqa: F405
     ("shl r32 cl", lambda: shl(E, cl), True),  # noqa: F405
+    ("shl r64 cl", lambda: shl(D, cl), True),  # noqa: F405
+    ("xchg r16 r16", lambda: xchg(W, V), False),  # noqa: F405  # as swaps the 87 /r operands
+    ("xchg r16 [base]", lambda: xchg(W, word[S + 2]), True),  # noqa: F405
     ("imul r r imm32", lambda: imul(D, S, I32), True),  # noqa: F405
     ("insn_test r64 imm32", lambda: insn_test(D, I32), "acc"),
     ("cmp r32 [base+idx*4]", lambda: cmp(E, dword[S + IDX * 4]), True),  # noqa: F405
@@ -283,6 +286,30 @@ def test_labels_against_gas():
     ret
     """
     assert assemble(text) == code
+
+
+@requires_oracle
+def test_rip_label_hole_followed_by_immediate_against_gas():
+    # rip is the end of the instruction, after the imm32 that follows the
+    # rel32 field, so the patch addend must account for the immediate.
+    frag = frag_of(lambda: (cmp(dword[rip + L], I32), cmp(dword[rip + L + 8], I32)))  # noqa: F405
+    a = Assembler(x64)
+    with a:
+        label("before")
+        frag.instantiate(lbl="before", i32=0x12345678)
+        frag.instantiate(lbl="after", i32=-0x7FFFFFF0)
+        label("after")
+        ret()  # noqa: F405
+    text = """
+    before:
+    cmp dword ptr [rip+before], 0x12345678
+    cmp dword ptr [rip+before+8], 0x12345678
+    cmp dword ptr [rip+after], -0x7ffffff0
+    cmp dword ptr [rip+after+8], -0x7ffffff0
+    after:
+    ret
+    """
+    assert assemble(text) == a.link(base=0).data
 
 
 def test_label_hole_data_and_movabs():
