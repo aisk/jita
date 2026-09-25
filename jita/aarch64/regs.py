@@ -105,6 +105,8 @@ class Reg(Register):
 
         return Addr(self) + other
 
+    __radd__ = __add__
+
     def __sub__(self, other):
         from .mem import Addr
 
@@ -135,6 +137,8 @@ class Mod(Operand):
     def __init__(self, kind: str, amount: int | None):
         if kind not in SHIFTS and kind not in EXTENDS:
             raise EncodeError(f"unknown shift or extend {kind!r}")
+        if amount is not None:
+            _amount(amount, "shift" if kind in SHIFTS else "extend")
         self.kind, self.amount = kind, amount
 
     def __eq__(self, other):

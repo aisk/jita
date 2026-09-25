@@ -340,3 +340,31 @@ def test_nested_fragment_passes_holes_through():
         cbz(x6, "end")  # noqa: F405
         label("end")
     assert a.link().data == direct.link().data
+
+
+# -- small API points --------------------------------------------------------------
+
+
+def test_assembler_accepts_arch_names():
+    import jita.x64
+
+    assert Assembler("aarch64").arch is A.ARCH
+    assert Assembler("x64").arch is jita.x64.ARCH
+    assert Fragment("aarch64").arch is A.ARCH
+    with pytest.raises(ValueError, match="unknown architecture"):
+        Assembler("mips")
+    with pytest.raises(TypeError, match="expected an Arch"):
+        Assembler(42)
+    with pytest.raises(TypeError, match="expected an Arch"):
+        Assembler(object())
+
+
+@pytest.mark.parametrize("amount", ["16", 1.5, -16, True])
+def test_non_int_shift_amounts(amount):
+    with pytest.raises(EncodeError, match="amount must be a non-negative int"):
+        movk(x0, 1, lsl=amount, asm=Assembler(A))  # noqa: F405
+
+
+def test_radd():
+    assert str(mem[8 + x0]) == str(mem[x0 + 8]) == "[x0, #8]"  # noqa: F405
+    assert str(mem[8 + (x0 + 8)]) == "[x0, #16]"  # noqa: F405

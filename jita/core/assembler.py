@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import platform
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar, Token
@@ -50,6 +51,22 @@ def _host_arch() -> Arch:
     raise JitaError(f"no jita architecture for host machine {machine!r}")
 
 
+_ARCH_NAMES = ("x64", "aarch64")
+
+
+def _resolve_arch(arch: Any) -> Arch:
+    if arch is None:
+        return _host_arch()
+    if isinstance(arch, str):
+        if arch not in _ARCH_NAMES:
+            raise ValueError(f"unknown architecture {arch!r} (known: {', '.join(_ARCH_NAMES)})")
+        arch = importlib.import_module(f"jita.{arch}")
+    arch = getattr(arch, "ARCH", arch)
+    if not isinstance(arch, Arch):
+        raise TypeError(f"expected an Arch, a module with ARCH or an architecture name, got {arch!r}")
+    return arch
+
+
 class _SectionSwitch:
     """Returned by Assembler.section. The switch has already happened; using
     it as a context manager restores the previous section on exit."""
@@ -93,11 +110,10 @@ class _BoundInsn:
 
 class Assembler:
     def __init__(self, arch: Any = None):
-        """`arch` is an Arch object, or a package exposing one as `ARCH`
-        (e.g. `jita.x64`). None selects the host architecture."""
-        if arch is None:
-            arch = _host_arch()
-        self.arch: Arch = getattr(arch, "ARCH", arch)
+        """`arch` is an Arch object, a package exposing one as `ARCH`
+        (e.g. `jita.x64`) or the name of such a jita package ("x64",
+        "aarch64"). None selects the host architecture."""
+        self.arch: Arch = _resolve_arch(arch)
         self.sections: dict[str, Section] = {}
         self.cur: Section = self._get_section("code")
         self.pc = PcLabels(self)

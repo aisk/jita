@@ -66,6 +66,8 @@ class Addr:
             return Addr(self.base, other, None, self.disp)
         return NotImplemented
 
+    __radd__ = __add__
+
     def __sub__(self, other) -> Addr:
         if _is_int(other):
             return Addr(self.base, self.index, self.mod, self.disp - other)
