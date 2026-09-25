@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..core.labels import Label
+from ..core.labels import Extern, Label
 
 if TYPE_CHECKING:
     from ..core.assembler import Assembler
@@ -43,6 +43,9 @@ class _Names:
         text = str(op)
         if isinstance(label, Label):
             text = text.replace(str(label), self(label))
+        elif isinstance(label, Extern):
+            # [rip + ext] reads the extern's pointer slot, not the extern.
+            text = text.replace(f"rip+{label}", f"rip+{label.name}@slot")
         return text
 
     def patch(self, p: Patch) -> str:

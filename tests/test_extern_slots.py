@@ -169,12 +169,16 @@ def test_missing_extern_address():
 
 
 def test_listing_shows_externs_section():
-    a = build(lambda e: call(qword[rip + e]))
+    a = build(lambda e: call(qword[rip + e]), lambda e: call(e))
     with a:
         lbl = Label()
         jmp(lbl)
         label(lbl)
     text = listing(a)
+    # The slot operand is named after the slot, the direct call after the
+    # extern itself.
+    assert "call qword ptr [rip+strlen@slot]" in text
+    assert "call strlen " in text
     assert "section externs (align 8, 8 bytes)" in text
     assert "strlen@slot:" in text
     assert "; rel32 -> strlen@slot" in text
