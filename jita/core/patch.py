@@ -56,6 +56,79 @@ class RelKind(PatchKind):
         buf[at : at + self.size] = value.to_bytes(self.size, "little", signed=True)
 
 
+class ImmKind(AbsKind):
+    """An immediate hole field: like AbsKind, but `target` is the hole's
+    value and must lie in `lo..hi`, the range allowed by the instruction
+    form the hole was encoded in."""
+
+    __slots__ = ("lo", "hi")
+
+    def __init__(self, name: str, size: int, lo: int, hi: int):
+        super().__init__(name, size)
+        self.lo, self.hi = lo, hi
+
+    def apply(self, buf: bytearray, at: int, target: int, place: int) -> None:
+        if not self.lo <= target <= self.hi:
+            raise LinkError(f"value {target} out of range {self.lo}..{self.hi}")
+        super().apply(buf, at, target, place)
+
+
+class BitsKind(PatchKind):
+    """Sets a bit field of one byte from a register number (register holes).
+
+    `(value >> take) & mask`, inverted first if `invert`, is written into
+    bits `shift .. shift+width-1` of the byte at `at`, replacing what the
+    template had there. `forbid` is a value that cannot be encoded in this
+    position (rsp as a SIB index). The field is part of an instruction, so
+    nothing is reserved for it: `size` is the one byte it modifies.
+    """
+
+    __slots__ = ("shift", "width", "take", "invert", "forbid")
+
+    def __init__(self, name: str, shift: int, width: int, take: int = 0, invert: bool = False,
+                 forbid: int | None = None):  # fmt: skip
+        super().__init__(name, 1)
+        self.shift, self.width, self.take = shift, width, take
+        self.invert, self.forbid = invert, forbid
+
+    def apply(self, buf: bytearray, at: int, target: int, place: int) -> None:
+        if target == self.forbid:
+            raise LinkError(f"{self.name}: register number {target} cannot be encoded here")
+        mask = (1 << self.width) - 1
+        v = target >> self.take
+        if self.invert:
+            v = ~v
+        buf[at] = (buf[at] & ~(mask << self.shift) & 0xFF) | ((v & mask) << self.shift)
+
+
+_imm_kinds: dict[tuple[int, int, int], ImmKind] = {}
+_bits_kinds: dict[tuple, BitsKind] = {}
+
+
+def imm_kind(size: int, lo: int, hi: int) -> ImmKind:
+    """The (shared) ImmKind for a field of `size` bytes accepting lo..hi."""
+    kind = _imm_kinds.get((size, lo, hi))
+    if kind is None:
+        bits = size * 8
+        name = f"imm{bits}"
+        if lo == -(1 << (bits - 1)) and hi == (1 << (bits - 1)) - 1:
+            name += "s"
+        elif lo == 0:
+            name += "u"
+        kind = _imm_kinds[size, lo, hi] = ImmKind(name, size, lo, hi)
+    return kind
+
+
+def bits_kind(name: str, shift: int, width: int, take: int = 0, invert: bool = False,
+              forbid: int | None = None) -> BitsKind:  # fmt: skip
+    """The (shared) BitsKind with these parameters."""
+    key = (name, shift, width, take, invert, forbid)
+    kind = _bits_kinds.get(key)
+    if kind is None:
+        kind = _bits_kinds[key] = BitsKind(*key)
+    return kind
+
+
 ABS8 = AbsKind("abs8", 1)
 ABS16 = AbsKind("abs16", 2)
 ABS32 = AbsKind("abs32", 4)

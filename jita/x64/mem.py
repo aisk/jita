@@ -6,6 +6,7 @@
     qword[rip + "name"]         same, naming a label of the assembler
     qword[0x1000]               absolute disp32 (SIB form, no base)
     qword[0x100000000]          absolute 64 bit address, only for mov64
+    qword[src + idx*8 + 16]     gp64 register holes as base/index (Fragment)
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from dataclasses import dataclass, replace
 
 from ..core.errors import EncodeError
 from ..core.labels import Label
-from ..core.operand import Operand
+from ..core.operand import Hole, Operand
 from .regs import Reg, rip
 
 _SIZE_NAMES = {1: "byte", 2: "word", 4: "dword", 8: "qword", 10: "tbyte", 16: "xmmword", 32: "ymmword"}
@@ -28,11 +29,11 @@ class MemExpr(Operand):
     Instances are normalized and validated on construction.
     """
 
-    base: Reg | None = None
-    index: Reg | None = None
+    base: Reg | Hole | None = None  # a Hole is a gp64 register hole
+    index: Reg | Hole | None = None
     scale: int = 1
     disp: int = 0
-    label: Label | str | None = None  # str names a label of the assembler
+    label: Label | str | Hole | None = None  # str names a label of the assembler
     size: int | None = None
 
     def __post_init__(self):
@@ -40,23 +41,33 @@ class MemExpr(Operand):
         if scale not in (1, 2, 4, 8):
             raise EncodeError(f"scale must be 1, 2, 4 or 8, got {scale!r}")
         # rsp can only be a base; with scale 1 swapping base and index is exact.
-        if index is not None and index.kind == "gp" and index.code == 4 and scale == 1:
+        if isinstance(index, Reg) and index.kind == "gp" and index.code == 4 and scale == 1:
             if base is None:
                 base, index = index, None
-            elif base.kind == "gp" and base.code != 4:
+            elif isinstance(base, Hole) or (base.kind == "gp" and base.code != 4):
                 base, index = index, base
             object.__setattr__(self, "base", base)
             object.__setattr__(self, "index", index)
-        if base is not None:
+        for r in (base, index):
+            if isinstance(r, Hole) and (r.kind != "reg" or r.regclass != "gp" or r.size != 8):
+                raise EncodeError(f"{r!r} cannot be used in an address, only gp64 holes can")
+        if isinstance(self.label, Hole) and self.label.kind != "label":
+            raise EncodeError(f"{self.label!r} cannot be used as an address label")
+        if isinstance(base, Reg):
             if base.kind not in ("gp", "rip") or (base.kind == "gp" and base.size not in (4, 8)):
                 raise EncodeError(f"{base} cannot be a memory base")
-        if index is not None:
+        if isinstance(index, Hole):
+            if isinstance(base, Reg) and base.kind == "gp" and base.size != 8:
+                raise EncodeError(f"mixed address sizes: {base} and {index!r}")
+        elif index is not None:
             if index.kind == "gp":
                 if index.size not in (4, 8):
                     raise EncodeError(f"{index} cannot be a memory index")
                 if index.code == 4:
                     raise EncodeError(f"{index} cannot be a memory index")
-                if base is not None and base.kind == "gp" and base.size != index.size:
+                if isinstance(base, Hole) and index.size != 8:
+                    raise EncodeError(f"mixed address sizes: {base!r} and {index}")
+                if isinstance(base, Reg) and base.kind == "gp" and base.size != index.size:
                     raise EncodeError(f"mixed address sizes: {base} and {index}")
             elif index.kind in ("xmm", "ymm"):
                 raise EncodeError(f"VSIB addressing ({index} as index) is not supported")
@@ -89,6 +100,8 @@ class MemExpr(Operand):
             return NotImplemented
         if isinstance(other, int):
             return replace(self, disp=self.disp + other)
+        if isinstance(other, Hole):
+            return self._add_hole(other)
         if isinstance(other, (Label, str)):
             if self.label is not None:
                 raise EncodeError("memory operand can reference only one label")
@@ -109,6 +122,17 @@ class MemExpr(Operand):
         return NotImplemented
 
     __radd__ = __add__
+
+    def _add_hole(self, hole: Hole) -> MemExpr:
+        if hole.kind == "label":
+            if self.label is not None:
+                raise EncodeError("memory operand can reference only one label")
+            return replace(self, label=hole)
+        if hole.kind != "reg":
+            raise EncodeError(f"{hole!r} cannot be part of an address")
+        if self.base is rip:
+            raise EncodeError(f"rip + {hole!r}: a register hole cannot be rip-relative")
+        return self._add_reg(hole)
 
     def __sub__(self, other) -> MemExpr:
         if isinstance(other, int) and not isinstance(other, bool):
@@ -147,7 +171,9 @@ class SizePrefix:
             m = MemExpr(base=x)
         elif isinstance(x, int) and not isinstance(x, bool):
             m = MemExpr(disp=x)
-        elif isinstance(x, (Label, str)):
+        elif isinstance(x, Hole) and x.kind == "reg":
+            m = MemExpr(base=x)
+        elif isinstance(x, (Label, str, Hole)):
             raise EncodeError(f"{self.name}[label] is not addressable on x64, use {self.name}[rip + label]")
         else:
             raise TypeError(f"{self.name}[...] expects a register, int or memory expression, got {x!r}")

@@ -15,8 +15,8 @@ runtime-only actions collapse into their constant-operand behavior:
   match time, exactly like DynASM does for numeric literals.
 - Displacements are always constants, so ModRM mod bits are chosen here
   (DynASM does the same for numeric displacements).
-- There are no variable registers (``Rq(expr)``), so all VREG machinery is
-  absent.
+- Variable registers (``Rq(expr)``) and runtime immediates exist only as
+  Fragment holes (``jita.core.Hole``), see "Holes" below.
 
 Deliberate differences from DynASM:
 
@@ -46,15 +46,33 @@ Deliberate differences from DynASM:
 - Combining ah/ch/dh/bh with any operand that requires a REX prefix is an
   error (DynASM only checks the spl/bpl/sil/dil mix).
 
-Note for phase 2 (template holes): like DynASM, the encoding depends on
-register numbers and immediate values, not just operand kinds. rbp/r13
-bases force a disp8, rsp/r12 bases force a SIB byte, registers 8..15 and
-spl..dil add a REX prefix, extended registers turn a 2 byte VEX prefix into
-a 3 byte one, the accumulator and cl select dedicated opcodes (``add rax,
-imm32`` is 48 05, ``shl r/m, cl`` needs cl), and immediates in -128..127
-select imm8 forms. A hole standing for a register or an immediate therefore
-fixes the instruction length only if the hole's range is restricted
-accordingly.
+Holes (Fragments). Like DynASM, the encoding of a concrete instruction
+depends on register numbers and immediate values: rbp/r13 bases force a
+disp8, rsp/r12 bases force a SIB byte, registers 8..15 and spl..dil add a
+REX prefix, extended registers turn a 2 byte VEX prefix into a 3 byte one,
+the accumulator and cl select dedicated opcodes, and immediates in
+-128..127 select imm8 forms. A hole stands for any value of its type, so an
+instruction with holes is encoded in a form whose length does not depend on
+the value:
+
+- A register hole is classified like a register of its class and size
+  (mode ``rm``, never the accumulator ``R`` or ``cl`` ``C`` forms). Its
+  number is left 0 in the bytes and recorded as BitsKind patches for the
+  3 bit field (ModRM.reg, ModRM.rm, SIB.base, SIB.index, opcode +r, VEX.vvvv,
+  is4) and for the high bit (REX.R/X/B, or the inverted VEX bit).
+- Any register hole makes non-VEX instructions carry a REX prefix (0x40 if
+  no bit is needed), so spl..dil and r8..r15 need no extra byte, and
+  ah/ch/dh/bh cannot be used. A register hole in ModRM.rm, SIB.base or
+  SIB.index forces the 3 byte VEX form.
+- A base register hole always gets a SIB byte and never mod=00: disp8 when
+  the displacement fits in int8 (including 0), disp32 otherwise.
+- An immediate hole matches the forms whose immediate has the hole's size
+  (imm8 holes the ``S``/``U`` and byte ``i`` forms, and so on), and its
+  bytes are an ImmKind patch whose range is the one that form accepts. An
+  imm64 hole only fits ``mov r64`` (movabs).
+- A label hole is used like a Label; the patch targets the hole until the
+  fragment is instantiated.
+- ``xchg`` with a register hole never uses the 90+r short forms.
 """
 
 from __future__ import annotations
@@ -66,7 +84,7 @@ from typing import Any
 from ..core.errors import EncodeError
 from ..core.labels import Extern, Label
 from ..core.operand import Hole, Imm
-from ..core.patch import ABS64, REL8, REL32, PatchKind
+from ..core.patch import ABS64, REL8, REL32, PatchKind, bits_kind, imm_kind
 from .mem import MemExpr
 from .regs import Reg
 from .table import MAP_OP
@@ -93,6 +111,14 @@ _SIZE_RANGE = {
     None: _INT32,
     "q": _INT32,
 }
+
+
+# Bit positions of a register number's high bit: (REX bit, VEX bit).
+_HI_BIT = {"R": (2, 7), "X": (1, 6), "B": (0, 5)}
+
+
+class _HoleSize(Exception):
+    """An immediate hole does not have the size this alternative needs."""
 
 
 _LABEL_IMM_WHY = (
@@ -132,11 +158,14 @@ class _Arg:
     raw:     immediate as given
     target:  Label/Extern for "iJ"
     needrex: True for spl..dil/r8b.., False for ah..bh, None otherwise
+    vreg:    register hole standing for `reg` (reg is then 0)
+    vxreg:   register hole standing for `xreg` (xreg is then 0)
+    vimm:    immediate hole standing for `imm`
     """
 
     __slots__ = (
         "op", "mode", "opsize", "reg", "xreg", "xsc", "disp", "riprel",
-        "label", "imm", "raw", "target", "needrex", "high",
+        "label", "imm", "raw", "target", "needrex", "high", "vreg", "vxreg", "vimm",
     )  # fmt: skip
 
     def __init__(self, op: Any):
@@ -148,6 +177,7 @@ class _Arg:
         self.label = self.imm = self.raw = self.target = None
         self.needrex = None
         self.high = False
+        self.vreg = self.vxreg = self.vimm = None
 
 
 def _classify(op: Any, mnemonic: str, ops: Sequence[Any]) -> _Arg:
@@ -179,13 +209,18 @@ def _classify(op: Any, mnemonic: str, ops: Sequence[Any]) -> _Arg:
             if a.opsize is None:
                 raise _fail(mnemonic, ops, f"bad memory operand size {op.size}")
         base, index = op.base, op.index
-        if base is not None and base.kind == "rip":
+        if isinstance(base, Hole):
+            a.reg, a.vreg = 0, base
+        elif base is not None and base.kind == "rip":
             a.riprel = True
             a.label = op.label
         elif base is not None:
             a.reg = base.code
         if index is not None:
-            a.xreg = index.code
+            if isinstance(index, Hole):
+                a.xreg, a.vxreg = 0, index
+            else:
+                a.xreg = index.code
             a.xsc = _XSC[op.scale]
         a.disp = op.disp
         return a
@@ -195,7 +230,19 @@ def _classify(op: Any, mnemonic: str, ops: Sequence[Any]) -> _Arg:
         a.target = op
         return a
     if isinstance(op, Hole):
-        raise _fail(mnemonic, ops, "template holes are not supported yet")
+        if op.kind == "reg":
+            a.opsize = _REG_OPSIZE[op.regclass, op.size]
+            a.mode, a.reg, a.vreg = "rm", 0, op
+            if a.opsize == "b":
+                a.needrex = True
+        elif op.kind == "imm":
+            # The declared size picks the form, never the (unknown) value.
+            a.mode = "iS" if op.size == 1 else "i"
+            a.imm = a.raw = 0
+            a.vimm = op
+        else:
+            a.mode, a.opsize, a.target = "iJ", "q", op
+        return a
     if isinstance(op, Imm) or (isinstance(op, int) and not isinstance(op, bool)):
         raw = Imm.coerce(op).value
         imm = raw
@@ -247,6 +294,14 @@ class _Encoder:
         self.out = bytearray()
         # (offset, kind, target, addend, riprel)
         self.fixups: list[tuple[int, PatchKind, Any, int, bool]] = []
+        # Register hole fields: (offset, BitsKind, hole).
+        self.bits: list[tuple[int, PatchKind, Hole]] = []
+        # Any register hole forces a REX prefix, so the length is fixed.
+        self.force_rex = any(a.vreg is not None or a.vxreg is not None for a in args)
+        # Where putop placed the REX byte, or the VEX byte with R/X/B.
+        self.rex_at: int | None = None
+        self.vex_at: int | None = None
+        self.vex3 = False
 
     def fail(self, why: str) -> EncodeError:
         return _fail(self.mnemonic, self.ops, why)
@@ -262,6 +317,42 @@ class _Encoder:
     def fixup(self, kind: PatchKind, target: Any, addend: int = 0, riprel: bool = False) -> None:
         self.fixups.append((len(self.out), kind, target, addend, riprel))
         self.out += bytes(kind.size)
+
+    def hole_reg(
+        self, hole: Hole, at: int, name: str, shift: int, hi: str, forbid: int | None = None
+    ) -> None:
+        """Record the patches that put `hole`'s register number into the 3
+        bit field `name` at bit `shift` of byte `at`, and its high bit into
+        the REX or VEX bit `hi` ("R", "X" or "B")."""
+        self.bits.append((at, bits_kind(name, shift, 3, 0, False, forbid), hole))
+        rexbit, vexbit = _HI_BIT[hi]
+        if self.vex_at is not None:
+            if hi != "R" and not self.vex3:
+                raise self.fail("internal error: 2 byte VEX with a hole in X/B")
+            self.bits.append((self.vex_at, bits_kind(f"vex.{hi.lower()}", vexbit, 1, 3, True), hole))
+        elif self.rex_at is not None:
+            self.bits.append((self.rex_at, bits_kind(f"rex.{hi.lower()}", rexbit, 1, 3), hole))
+        else:
+            raise self.fail("internal error: register hole without REX or VEX prefix")
+
+    def hole_imm(self, c: str, a: _Arg, sz: str | None) -> None:
+        """Emit the field of an immediate hole for template character c."""
+        hole = a.vimm
+        if c == "S":
+            width, lo, hi = 1, -128, 127
+        elif c == "U":
+            width, lo, hi = 1, 0, 255
+        elif c == "W":
+            width, lo, hi = 2, 0, 0xFFFF
+        elif c == "i" or c == "I":
+            width = {"b": 1, "w": 2}.get(sz, 4)
+            lo, hi = _SIZE_RANGE.get(sz, _INT32)
+        else:
+            raise self.fail(f"{hole!r} cannot be used here")
+        if width != hole.size:
+            raise _HoleSize(width)
+        hlo, hhi = hole.range
+        self.fixup(imm_kind(width, max(lo, hlo), min(hi, hhi)), hole)
 
     def put_sbyte(self, a: _Arg) -> None:
         n = a.imm
@@ -299,14 +390,17 @@ class _Encoder:
 
     # -- opcode, REX and VEX (wputop) ---------------------------------------
 
-    def putop(self, sz: str | None, op: int, rex: int, vex: _Vex | None) -> None:
+    def putop(self, sz: str | None, op: int, rex: int, vex: _Vex | None, vex3: bool = False) -> None:
+        """`vex3` forces the 3 byte VEX form (register holes in X or B)."""
         if vex is not None:
             tail = None
-            if vex.m == 1 and rex & 11 == 0:
+            if vex.m == 1 and rex & 11 == 0 and not vex3:
                 self.putb(0xC5)
+                self.vex_at, self.vex3 = len(self.out), False
                 tail = ((rex & 4) ^ 4) << 5
             if tail is None:
                 self.putb(0xC4)
+                self.vex_at, self.vex3 = len(self.out), True
                 self.putb((((rex & 7) ^ 7) << 5) + vex.m)
                 tail = (rex & 8) << 4
             reg = 0
@@ -314,6 +408,8 @@ class _Encoder:
                 if vex.v.mode[0] != "r":
                     raise self.fail("bad vex operand")
                 reg = vex.v.reg
+                if vex.v.vreg is not None:
+                    self.bits.append((len(self.out), bits_kind("vex.v", 3, 4, 0, True), vex.v.vreg))
             if sz == "y" or vex.l:
                 tail += 4
             self.putb(tail + ((reg ^ 15) << 3) + vex.p)
@@ -334,6 +430,7 @@ class _Encoder:
             if rex != 0:
                 opc3 = op & 0xFFFF00
                 if opc3 == 0x0F3A00 or opc3 == 0x0F3800:
+                    self.rex_at = len(self.out)
                     self.putb(0x40 + (rex & 15))
                     rex = 0
             self.putb(op >> 16)
@@ -341,11 +438,13 @@ class _Encoder:
         if op >= 256:
             b = op >> 8
             if b == 15 and rex != 0:
+                self.rex_at = len(self.out)
                 self.putb(0x40 + (rex & 15))
                 rex = 0
             self.putb(b)
             op &= 255
         if rex != 0:
+            self.rex_at = len(self.out)
             self.putb(0x40 + (rex & 15))
         if sz == "b":
             op -= 1
@@ -357,8 +456,13 @@ class _Encoder:
     def modrm(m: int, s: int, rm: int) -> int:
         return (m << 6) | ((s & 7) << 3) | (rm & 7)
 
-    def putmrmsib(self, t: _Arg, s: int) -> None:
+    def putmrmsib(self, t: _Arg, s: int, shole: Hole | None = None) -> None:
+        """`shole` is a register hole standing for `s` (ModRM.reg)."""
+        if shole is not None:
+            self.hole_reg(shole, len(self.out), "modrm.reg", 3, "R")
         if t.mode[0] == "r":
+            if t.vreg is not None:
+                self.hole_reg(t.vreg, len(self.out), "modrm.rm", 0, "B")
             self.putb(self.modrm(3, s, t.reg))
             return
         if t.riprel:
@@ -374,6 +478,8 @@ class _Encoder:
             self.putb(self.modrm(0, s, 4))
             if xreg is not None:
                 # [xreg*xsc+disp] -> (0, s, esp) (xsc, xreg, ebp)
+                if t.vxreg is not None:
+                    self.hole_reg(t.vxreg, len(self.out), "sib.index", 3, "X", forbid=4)
                 self.putb(self.modrm(t.xsc, xreg, 5))
             else:
                 # [disp] -> (0, s, esp) (0, esp, ebp)
@@ -386,15 +492,19 @@ class _Encoder:
                 raise self.fail("absolute address does not fit in 32 bits, use mov64")
             self.putd(disp)
             return
-        if disp == 0 and reg & 7 != 5:
+        if disp == 0 and reg & 7 != 5 and t.vreg is None:
             m = 0
         elif -128 <= disp <= 127:
             m = 1
         else:
             m = 2
-        if xreg is not None or reg & 7 == 4:
-            # Index register present or esp as base register: need SIB.
+        if xreg is not None or reg & 7 == 4 or t.vreg is not None:
+            # Index register present, esp or a hole as base register: need SIB.
             self.putb(self.modrm(m, s, 4))
+            if t.vxreg is not None:
+                self.hole_reg(t.vxreg, len(self.out), "sib.index", 3, "X", forbid=4)
+            if t.vreg is not None:
+                self.hole_reg(t.vreg, len(self.out), "sib.base", 0, "B")
             self.putb(self.modrm(t.xsc or 0, 4 if xreg is None else xreg, reg))
         else:
             self.putb(self.modrm(m, s, reg))
@@ -413,6 +523,8 @@ class _Encoder:
         szov = sz
         narg = 1  # 1-based, like the Lua code
         rex = 0
+        if self.force_rex:
+            needrex = True
 
         for c in pat + "|":
             if c in _HEX:
@@ -453,9 +565,10 @@ class _Encoder:
                     rex += 4
                 if needrex:
                     rex += 16
-                self.putop(szov, opcode, rex, vex)
+                shole = addin.vreg if addin is not None else None
+                self.putop(szov, opcode, rex, vex, t.vreg is not None or t.vxreg is not None)
                 opcode = None
-                self.putmrmsib(t, s)
+                self.putmrmsib(t, s, shole)
                 addin = None
             elif c in _VEXARG:  # Encode using VEX prefix.
                 b = opcode & 255
@@ -488,7 +601,12 @@ class _Encoder:
                         rex += 16
                     if addin is not None and addin.reg > 7:
                         rex += 1
-                    self.putop(szov, opcode, rex, vex)
+                    ahole = addin.vreg if addin is not None else None
+                    self.putop(szov, opcode, rex, vex, ahole is not None)
+                    if ahole is not None:
+                        if self.out[-1] & 7:
+                            raise self.fail(f"{ahole!r} cannot be merged into this opcode")
+                        self.hole_reg(ahole, len(self.out) - 1, "opcode", 0, "B")
                     opcode = None
                 if c == "|":
                     break
@@ -507,6 +625,9 @@ class _Encoder:
     def immediate(self, c: str, a: _Arg, sz: str | None, pat: str) -> None:
         if a.mode == "iJ" and c != "J":
             raise self.fail(_LABEL_IMM_WHY)
+        if a.vimm is not None:
+            self.hole_imm(c, a, sz)
+            return
         if c in "SUWiI" and a.imm is not None:
             lo, hi = _SIZE_RANGE.get(sz, (None, None))
             if lo is not None and not lo <= a.raw <= hi:
@@ -535,13 +656,27 @@ class _Encoder:
         elif c == "s":  # 4 bit register immediate (is4).
             if a.mode[0] != "r":
                 raise self.fail("expected a register operand")
+            if a.vreg is not None:
+                self.bits.append((len(self.out), bits_kind("is4", 4, 4), a.vreg))
             self.putb(a.reg << 4)
         else:
             raise self.fail(f"bad char {c!r} in pattern {pat!r}")
 
     # -- final emission -----------------------------------------------------
 
+    def holes(self) -> list[Hole]:
+        """The holes of this instruction, in operand order."""
+        found: dict[Hole, None] = {}
+        for a in self.args:
+            for h in (a.vreg, a.vxreg, a.vimm, a.target, a.label):
+                if isinstance(h, Hole):
+                    found[h] = None
+        return list(found)
+
     def flush(self, asm: Any) -> None:
+        # Holes are checked first so that a rejected one emits nothing.
+        for hole in self.holes():
+            asm.accept_hole(hole)
         out = self.out
         total = len(out)
         start = asm.pos()
@@ -557,6 +692,8 @@ class _Encoder:
             pos = off + kind.size
         if pos < total:
             asm.emit(bytes(out[pos:]))
+        for off, kind, hole in self.bits:
+            asm.add_patch(start + off, kind, hole)
         asm.note_insn(start, self.mnemonic + (".short" if self.short else ""), self.ops)
 
 
@@ -599,6 +736,7 @@ def _encode_template(mnemonic: str, template: str, ops: Sequence[Any], short: bo
     # Try all match:pattern pairs (separated by '|').
     nargs = len(args)
     gotmatch = False
+    holesize = False
     lastpat = ""
     for tm in template.split("|"):
         if not tm:
@@ -633,12 +771,20 @@ def _encode_template(mnemonic: str, template: str, ops: Sequence[Any], short: bo
             enc = _Encoder(mnemonic, ops, args, short)
             if _needs_addr32(args):
                 enc.putb(0x67)
-            enc.dopattern(pat, chosen, needrex)
+            try:
+                enc.dopattern(pat, chosen, needrex)
+            except _HoleSize:
+                # An immediate hole selects forms by its size; try the next.
+                holesize = True
+                continue
             return enc
         gotmatch = True
 
     why = "bad operand mode"
-    if any(a.mode == "iJ" for a in args):
+    if holesize:
+        hole = next(a.vimm for a in args if a.vimm is not None)
+        why = f"no form with a {hole.size * 8} bit immediate for {hole!r}"
+    elif any(a.mode == "iJ" for a in args):
         why = _LABEL_IMM_WHY
     elif gotmatch:
         if szmix:
@@ -675,12 +821,18 @@ def _encode_mov64(ops: Sequence[Any], mnemonic: str = "mov64") -> _Encoder:
         enc.out += (mem.disp & (2**64 - 1)).to_bytes(8, "little")
         return enc
     r = args[0]
-    if not isinstance(dst, Reg) or r.mode[0] != "r" or r.opsize != "q":
+    if not isinstance(dst, (Reg, Hole)) or r.mode[0] != "r" or r.opsize != "q":
         raise _fail(mnemonic, ops, "bad operand mode")
     enc.putop(None, 0xB8 + (r.reg & 7), 9 if r.reg > 7 else 8, None)
+    if r.vreg is not None:
+        enc.hole_reg(r.vreg, len(enc.out) - 1, "opcode", 0, "B")
     s = args[1]
     if s.mode == "iJ":
         enc.fixup(ABS64, s.target)
+    elif s.vimm is not None:
+        if s.vimm.size != 8:
+            raise _fail(mnemonic, ops, f"{s.vimm!r} is not a 64 bit immediate hole")
+        enc.fixup(imm_kind(8, *s.vimm.range), s.vimm)
     elif s.raw is not None:
         if not -(1 << 63) <= s.raw < (1 << 64):
             raise _fail(mnemonic, ops, "immediate does not fit in 64 bits")
@@ -691,10 +843,15 @@ def _encode_mov64(ops: Sequence[Any], mnemonic: str = "mov64") -> _Encoder:
 
 
 def _is_mov64_imm(dst: Any, src: Any) -> bool:
-    if not (isinstance(dst, Reg) and dst.kind == "gp" and dst.size == 8):
+    if isinstance(dst, Hole):
+        if not (dst.kind == "reg" and dst.regclass == "gp" and dst.size == 8):
+            return False
+    elif not (isinstance(dst, Reg) and dst.kind == "gp" and dst.size == 8):
         return False
     if isinstance(src, (Label, Extern)):
         return True
+    if isinstance(src, Hole):
+        return src.kind == "label" or (src.kind == "imm" and src.size == 8)
     if isinstance(src, Imm):
         src = src.value
     if isinstance(src, int) and not isinstance(src, bool):
@@ -728,7 +885,10 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], short: bool = False) -> 
         enc = _encode_mov64(ops, mnemonic)
     else:
         template = MAP_OP.get(f"{mnemonic}_{len(ops)}")
-        if mnemonic == "xchg" and len(ops) == 2 and all(_is_eax(op) for op in ops):
+        if mnemonic == "xchg" and len(ops) == 2 and (
+            all(_is_eax(op) for op in ops) or any(isinstance(op, Hole) for op in ops)
+        ):
+            # 90+r is a nop for eax, and would depend on a hole's number.
             template = _XCHG_NO_SHORT
         if template is None:
             counts = MNEMONIC_ARGC.get(mnemonic)

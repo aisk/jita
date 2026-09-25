@@ -156,11 +156,13 @@ def test_abs32_overflow_and_addend():
         a.link(base=1 << 40)
 
 
-def test_hole_is_not_linkable():
+def test_hole_only_in_fragments():
     a = Assembler(x64)
-    a.emit_patch(ABS32, Hole("h"))
-    with pytest.raises(LinkError):
-        a.link()
+    with pytest.raises(TypeError, match="typed constructor"):
+        Hole("h")
+    with pytest.raises(EncodeError, match="only be used inside a Fragment"):
+        a.emit_patch(ABS32, Hole.imm32("h"))
+    assert a.cur.buf == b"" and a.cur.patches == []
     with pytest.raises(TypeError):
         a.emit_patch(ABS32, 5)
 

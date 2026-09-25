@@ -11,7 +11,7 @@ from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
 from .labels import Extern, Label, PcLabels, _bind_seq
 from .operand import Hole
-from .patch import ABS_BY_SIZE, Patch, PatchKind
+from .patch import ABS_BY_SIZE, Patch, PatchKind, imm_kind
 from .section import Section
 
 if TYPE_CHECKING:
@@ -155,9 +155,26 @@ class Assembler:
         """Reserve kind.size zero bytes at pos and record the Patch."""
         if not isinstance(target, (Label, Extern, Hole)):
             raise TypeError(f"patch target must be a Label, Extern or Hole, got {target!r}")
+        if isinstance(target, Hole):
+            self.accept_hole(target)
         sec = self.cur
         sec.patches.append(Patch(sec.pos(), kind, target, addend))
         sec.buf += bytes(kind.size)
+
+    def add_patch(self, offset: int, kind: PatchKind, target: Hole, addend: int = 0) -> None:
+        """Record a patch over bytes already emitted in the current section,
+        without reserving new ones. Used for the register fields of
+        instructions that contain holes (see `jita.core.patch.BitsKind`)."""
+        sec = self.cur
+        if not 0 <= offset <= sec.pos() - kind.size:
+            raise ValueError(f"patch at {offset} is outside the emitted bytes")
+        self.accept_hole(target)
+        sec.patches.append(Patch(offset, kind, target, addend))
+
+    def accept_hole(self, hole: Hole) -> None:
+        """Called before an instruction or directive using `hole` is emitted.
+        Holes only make sense in a Fragment; a plain Assembler rejects them."""
+        raise EncodeError(f"{hole!r} can only be used inside a Fragment")
 
     def note_insn(self, start: int, mnemonic: str, ops: tuple = ()) -> None:
         """Record that the bytes from `start` to pos form one instruction.
@@ -220,6 +237,9 @@ class Assembler:
         for v in vals:
             if isinstance(v, str):
                 v = self.named(v)
+            if isinstance(v, Hole):
+                self._data_hole(size, v)
+                continue
             if isinstance(v, (Label, Extern)):
                 self.emit_patch(ABS_BY_SIZE[size], v)
                 continue
@@ -230,16 +250,24 @@ class Assembler:
                 raise EncodeError(f"value {v:#x} does not fit in {size} bytes")
             self.emit((v & ((1 << bits) - 1)).to_bytes(size, "little"))
 
-    def byte(self, *vals: int | str | Label | Extern) -> None:
+    def _data_hole(self, size: int, hole: Hole) -> None:
+        if hole.kind == "label":
+            self.emit_patch(ABS_BY_SIZE[size], hole)
+        elif hole.kind == "imm" and hole.size == size:
+            self.emit_patch(imm_kind(size, *hole.range), hole)
+        else:
+            raise EncodeError(f"{hole!r} cannot be a {size} byte data value")
+
+    def byte(self, *vals: int | str | Label | Extern | Hole) -> None:
         self._data(1, vals)
 
-    def word(self, *vals: int | str | Label | Extern) -> None:
+    def word(self, *vals: int | str | Label | Extern | Hole) -> None:
         self._data(2, vals)
 
-    def dword(self, *vals: int | str | Label | Extern) -> None:
+    def dword(self, *vals: int | str | Label | Extern | Hole) -> None:
         self._data(4, vals)
 
-    def qword(self, *vals: int | str | Label | Extern) -> None:
+    def qword(self, *vals: int | str | Label | Extern | Hole) -> None:
         self._data(8, vals)
 
     def bytes(self, data: bytes) -> None:

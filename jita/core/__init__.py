@@ -1,6 +1,7 @@
 from .arch import Arch
 from .assembler import Assembler, current, label
 from .errors import EncodeError, JitaError, LinkError, LoadError
+from .fragment import Fragment, Instance
 from .labels import Extern, Label, PcLabels
 from .link import Image, link
 from .operand import Hole, Imm, Operand, Register
@@ -18,9 +19,11 @@ __all__ = [
     "Assembler",
     "EncodeError",
     "Extern",
+    "Fragment",
     "Hole",
     "Image",
     "Imm",
+    "Instance",
     "JitaError",
     "Label",
     "LinkError",
