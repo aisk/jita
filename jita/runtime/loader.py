@@ -4,21 +4,21 @@ from __future__ import annotations
 
 import ctypes
 import mmap
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Mapping
+from typing import Any
 
+from ..core.assembler import Assembler
 from ..core.errors import LoadError
 from ..core.labels import Label
 from ..core.link import Image, layout, link
 from .memory import ExecMemory
 
-if TYPE_CHECKING:
-    from ..core.assembler import Assembler
-
 
 class Module:
     """Loaded code. Function objects returned by `function` keep the module
-    alive; calling them after `close` crashes the process."""
+    alive through their `module` attribute, and the memory is released when
+    the module is garbage collected, so `close` and `with` are optional.
+    Calling a function after `close` crashes the process."""
 
     def __init__(self, image: Image, memory: ExecMemory):
         self.image = image
@@ -34,11 +34,12 @@ class Module:
         return self.image.address(label)
 
     def function(self, restype: Any, *argtypes: Any, entry: Label | str | None = None) -> Any:
-        """ctypes CFUNCTYPE bound to `entry` (default: image base)."""
+        """ctypes CFUNCTYPE bound to `entry` (default: image base). Its
+        `module` attribute is this module."""
         self._check_open()
         addr = self.image.base if entry is None else self.address(entry)
         fn = ctypes.CFUNCTYPE(restype, *argtypes)(addr)
-        fn._jita_module = self
+        fn.module = self
         return fn
 
     def write(self, where: int | Label | str, data: bytes) -> None:
@@ -83,3 +84,36 @@ def load(asm: Assembler, externs: Mapping[str, int] | None = None) -> Module:
         mem.close()
         raise
     return Module(image, mem)
+
+
+def function(
+    restype: Any,
+    *argtypes: Any,
+    entry: Label | str | None = None,
+    externs: Mapping[str, int] | None = None,
+    arch: Any = None,
+) -> Callable[[Callable[[Assembler], Any]], Any]:
+    """Decorator turning a code generator into a ctypes callable.
+
+    The decorated body runs once, at decoration time, inside a fresh
+    `Assembler(arch)` entered as the current context, and receives that
+    assembler as its only argument. The result is
+    `a.function(restype, *argtypes, entry=entry, externs=externs)`, with
+    the body's `__name__`, `__qualname__` and `__doc__` copied onto it.
+    Inside a factory function the body closes over the factory's
+    parameters, which is how specialized variants are generated.
+    """
+
+    def decorate(body: Callable[[Assembler], Any]) -> Any:
+        a = Assembler(arch)
+        with a:
+            body(a)
+        fn = a.function(restype, *argtypes, entry=entry, externs=externs)
+        for attr in ("__name__", "__qualname__", "__doc__"):
+            try:
+                setattr(fn, attr, getattr(body, attr))
+            except (AttributeError, TypeError):
+                pass
+        return fn
+
+    return decorate

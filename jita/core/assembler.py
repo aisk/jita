@@ -363,6 +363,23 @@ class Assembler:
 
         return load(self, externs)
 
+    def function(
+        self,
+        restype: Any,
+        *argtypes: Any,
+        entry: Label | str | None = None,
+        externs: Mapping[str, int] | None = None,
+    ) -> Any:
+        """Load into a fresh Module and return a ctypes callable bound to
+        `entry` (default: image base). The callable keeps the Module alive
+        through its `module` attribute and this assembler through
+        `assembler`; the memory is released when it is garbage collected."""
+        from ..runtime.loader import load
+
+        fn = load(self, externs).function(restype, *argtypes, entry=entry)
+        fn.assembler = self
+        return fn
+
 
 def _check_pow2(n: int) -> None:
     if n <= 0 or n & (n - 1):

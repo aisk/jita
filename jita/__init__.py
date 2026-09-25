@@ -13,7 +13,7 @@ from .core import (
     current,
     label,
 )
-from .runtime import Module
+from .runtime import Module, function
 
 __all__ = [
     "Assembler",
@@ -27,5 +27,6 @@ __all__ = [
     "Module",
     "PcLabels",
     "current",
+    "function",
     "label",
 ]
