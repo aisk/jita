@@ -57,10 +57,14 @@ def test_example(name):
         assert any(want in line for line in lines), f"{want!r} not in output of {name}:\n{proc.stdout}"
 
 
-README_SNIPPETS = re.findall(r"```python\n(.*?)```", (ROOT / "README.md").read_text(), re.S)
+DOC_SNIPPETS = [
+    (f"{doc.stem}{i}", code)
+    for doc in (ROOT / "README.md", ROOT / "docs" / "reference.md")
+    for i, code in enumerate(re.findall(r"```python\n(.*?)```", doc.read_text(), re.S))
+]
 
 
-@pytest.mark.parametrize("code", README_SNIPPETS, ids=[f"readme{i}" for i in range(len(README_SNIPPETS))])
-def test_readme_snippet_runs_as_pasted(code):
+@pytest.mark.parametrize("code", [c for _, c in DOC_SNIPPETS], ids=[i for i, _ in DOC_SNIPPETS])
+def test_doc_snippet_runs_as_pasted(code):
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr

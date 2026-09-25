@@ -18,3 +18,13 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+The instruction tables in jita/x64/table.py and jita/aarch64/table.py are
+derived from LuaJIT's DynASM (dynasm/dasm_x86.lua and dynasm/dasm_arm64.lua),
+Copyright (C) 2005-2026 Mike Pall. All rights reserved.
+https://luajit.org/dynasm.html
+
+DynASM is released under the same MIT license, reproduced above; the
+original notices are kept in the two table files.
