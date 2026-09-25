@@ -2,7 +2,7 @@ import pytest
 
 import jita.x64 as x64
 from jita import Assembler, Extern, JitaError, Label, LinkError, current, label
-from jita.core import ABS32, REL8, REL32, EncodeError, Hole
+from jita.core import ABS32, REL8, REL32, EncodeError
 from jita.core.patch import SLOT_REL32
 from jita.tools.listing import listing
 
@@ -157,15 +157,11 @@ def test_abs32_overflow_and_addend():
         a.link(base=1 << 40)
 
 
-def test_hole_only_in_fragments():
+def test_patch_target_must_be_a_label_or_extern():
     a = Assembler(x64)
-    with pytest.raises(TypeError, match="typed constructor"):
-        Hole("h")
-    with pytest.raises(EncodeError, match="only be used inside a Fragment"):
-        a.emit_patch(ABS32, Hole.imm32("h"))
-    assert a.cur.buf == b"" and a.cur.patches == []
     with pytest.raises(TypeError):
         a.emit_patch(ABS32, 5)
+    assert a.cur.buf == b"" and a.cur.patches == []
 
 
 def test_add_patch_is_the_primitive():
@@ -429,7 +425,7 @@ def test_star_exports():
     ns = {}
     exec("from jita.core import *", ns)
     names = set(ns) - {"__builtins__"}
-    assert {"Assembler", "Section", "Image", "link", "ABS64", "REL32", "Hole"} <= names
+    assert {"Assembler", "Section", "Image", "link", "ABS64", "REL32"} <= names
     # No submodules leak through the star import.
     import types
 

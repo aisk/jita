@@ -1,10 +1,9 @@
 from .arch import Arch
 from .assembler import Assembler, current, label
 from .errors import EncodeError, JitaError, LinkError, LoadError
-from .fragment import Fragment, Instance
 from .labels import Extern, Label, PcLabels
 from .link import Image, link
-from .operand import Hole, Imm, Operand, Register
+from .operand import Imm, Operand, Register
 from .patch import ABS8, ABS16, ABS32, ABS64, REL8, REL32, SLOT_REL32, Patch, PatchKind, SlotKind
 from .section import Section
 
@@ -20,11 +19,8 @@ __all__ = [
     "Assembler",
     "EncodeError",
     "Extern",
-    "Fragment",
-    "Hole",
     "Image",
     "Imm",
-    "Instance",
     "JitaError",
     "Label",
     "LinkError",

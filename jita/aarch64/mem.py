@@ -21,44 +21,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..core.errors import EncodeError
-from ..core.operand import Hole, Operand
-from .regs import Mod, Reg, RegMod, reg_type
+from ..core.operand import Operand
+from .regs import Mod, Reg, RegMod
 
 
 def _is_int(x) -> bool:
     return isinstance(x, int) and not isinstance(x, bool)
 
 
-def _is_x_hole(x) -> bool:
-    """A gp64 register hole (holes cannot take an extend, so a w index
-    cannot be a hole)."""
-    return isinstance(x, Hole) and x.kind == "reg" and x.regclass == "gp" and x.size == 8
-
-
-def _is_base(x) -> bool:
-    """x0..x30, sp or a gp64 register hole."""
-    if isinstance(x, Reg):
-        return x.kind == "sp" or (x.rt == "x" and x.code < 31)
-    return _is_x_hole(x)
-
-
 class Addr:
     """An address expression under construction: `x0 + 8`, `x0 + x1 << 3`.
 
     Not an operand by itself; wrap it with `mem[...]`, `mem.pre[...]`.
-    The base may be a gp64 register hole of a Fragment (`mem[src + 8]`),
-    the index a plain gp64 hole (`mem[x0 + idx]`).
     """
 
     __slots__ = ("base", "index", "mod", "disp")
 
-    def __init__(self, base: Reg | Hole, index: Reg | Hole | None = None, mod: Mod | None = None, disp: int = 0):
+    def __init__(self, base: Reg, index: Reg | None = None, mod: Mod | None = None, disp: int = 0):
         self.base, self.index, self.mod, self.disp = base, index, mod, disp
 
     def __add__(self, other) -> Addr:
         if _is_int(other):
             return Addr(self.base, self.index, self.mod, self.disp + other)
-        if isinstance(other, (Reg, RegMod)) or _is_x_hole(other):
+        if isinstance(other, (Reg, RegMod)):
             if self.index is not None:
                 raise EncodeError(f"too many registers in address: {self} + {other}")
             if isinstance(other, RegMod):
@@ -101,16 +86,16 @@ class MemExpr(Operand):
     construction; offset ranges depend on the instruction and are checked
     by the encoder."""
 
-    base: Reg | Hole
-    index: Reg | Hole | None = None
+    base: Reg
+    index: Reg | None = None
     mod: Mod | None = None
     disp: int = 0
     mode: str = "offset"
 
     def __post_init__(self):
         base, index, mod = self.base, self.index, self.mod
-        if not _is_base(base):
-            raise EncodeError(f"{base!r} cannot be a memory base (use x0..x30, sp or a gp64 hole)")
+        if not isinstance(base, Reg) or not (base.kind == "sp" or (base.rt == "x" and base.code < 31)):
+            raise EncodeError(f"{base} cannot be a memory base (use x0..x30 or sp)")
         if self.mode not in _MODES:
             raise EncodeError(f"bad addressing mode {self.mode!r}")
         if not _is_int(self.disp):
@@ -123,10 +108,10 @@ class MemExpr(Operand):
             raise EncodeError(f"{self.mode}-index addressing takes an immediate, not a register")
         if self.disp:
             raise EncodeError("an address cannot have both an index register and an offset")
-        if not ((isinstance(index, Reg) and index.kind == "gp") or _is_x_hole(index)):
-            raise EncodeError(f"{index!r} cannot be a memory index")
+        if not isinstance(index, Reg) or index.kind != "gp":
+            raise EncodeError(f"{index} cannot be a memory index")
         kind = None if mod is None else mod.kind
-        if reg_type(index) == "x":
+        if index.rt == "x":
             if kind not in (None, "lsl", "sxtx"):
                 raise EncodeError(f"a 64 bit index takes lsl or sxtx, not {kind}")
         elif kind not in ("uxtw", "sxtw"):
@@ -150,7 +135,7 @@ class MemExpr(Operand):
 
 
 def _from(x, mode: str) -> MemExpr:
-    if isinstance(x, (Reg, Hole)):
+    if isinstance(x, Reg):
         return MemExpr(x, mode=mode)
     if isinstance(x, Addr):
         return MemExpr(x.base, x.index, x.mod, x.disp, mode)
@@ -165,7 +150,7 @@ class _Post:
     __slots__ = ()
 
     def __getitem__(self, key) -> MemExpr:
-        if not (isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], (Reg, Hole)) and _is_int(key[1])):
+        if not (isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], Reg) and _is_int(key[1])):
             raise EncodeError(f"post-index is written mem.post[base, offset], got {key!r}")
         return MemExpr(key[0], disp=key[1], mode="post")
 

@@ -21,7 +21,6 @@ EXPECTED = {
         "strlen via slot: 15",
     ],
     "sse_dot.py": ["dot = 220.0"],
-    "fragments.py": ["poly(10) + 6 + 300 = 3163", "jnz.short .L3", "add r10, qword ptr [rcx+r8*8-8]"],
     "typed_struct.py": [
         "movsxd r9, dword ptr [rdi+rcx*4+24]",
         "totals = [3, 108, 0], flags = [1, 1, 1]",

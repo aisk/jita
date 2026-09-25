@@ -9,7 +9,7 @@ from typing import Any
 
 from ..core.arch import Arch
 from ..core.assembler import label
-from ..core.errors import EncodeError, LoadError
+from ..core.errors import LoadError
 from . import insns as _insns
 from . import mem as _mem
 from . import regs as _regs
@@ -42,17 +42,6 @@ class Aarch64Arch(Arch):
         NOP words, so the NOPs stay word aligned when the padding starts
         at an instruction boundary."""
         return bytes(n % 4) + NOP * (n // 4)
-
-    def hole_mem(self, hole: Any, scale: int | None = None) -> _mem.Addr:
-        """The address a gp64 register hole starts: `hole + 8` is the same
-        `Addr` as `x0 + 8`, completed by `mem[...]` (used by
-        `Hole.__add__`). aarch64 has no `index*scale` addresses; a scaled
-        index is written `mem[base + (index << n)]`."""
-        if scale is not None:
-            raise EncodeError("aarch64 addresses have no index*scale, write mem[base + (index << n)]")
-        if not (hole.regclass == "gp" and hole.size == 8):
-            raise EncodeError(f"{hole!r} cannot be a memory base or index (use a gp64 hole)")
-        return _mem.Addr(hole)
 
     def icache_flush(self, addr: int, size: int) -> None:
         """Call libgcc's `__clear_cache` on an aarch64 host; no-op elsewhere

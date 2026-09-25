@@ -7,7 +7,7 @@ The README has the short version.
 Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Labels](#labels) · [Externs](#externs) · [Data](#data-directives) ·
 [Linking and loading](#linking-and-loading) · [Listings](#listings) ·
-[x64](#x64) · [Fragments](#fragments) · [Structures](#structures) ·
+[x64](#x64) · [Structures](#structures) ·
 [aarch64](#aarch64) · [Compared with DynASM](#compared-with-dynasm) ·
 [Errors](#errors)
 
@@ -26,10 +26,10 @@ a.mov(rax, 1)                 # every mnemonic is also a method
 ```
 
 `with a:` makes `a` the current assembler for the module level instruction
-functions, the `label()` directive and `Fragment.instantiate()`. Contexts
-nest, so a macro is just a Python function that emits instructions, and
-DynASM's `.if` is a Python `if` in the generator. `jita.current()` returns
-the active assembler. Outside any context use the method forms.
+functions and the `label()` directive. Contexts nest, so a macro is just a
+Python function that emits instructions, and DynASM's `.if` is a Python
+`if` in the generator. `jita.current()` returns the active assembler.
+Outside any context use the method forms.
 
 Instruction names are lowercase. The x64 mnemonics that clash with Python
 keywords or builtins are `and_`, `or_`, `not_` and `int_`; on aarch64
@@ -201,66 +201,6 @@ Beyond DynASM's table jita adds `xadd`, `cmpxchg`, `cmpxchg8b`,
 `cmpsq`, `stosq`, `lodsq`, `scasq`; they combine with `lock()` and `rep()`.
 16 bit `lea` is not available.
 
-## Fragments
-
-`gp64(n)` picks a register while Python generates the code, and the
-instruction is encoded again every time. A `Fragment` is encoded once with
-`Hole` operands and then instantiated as often as needed; an instance copies
-the bytes and patches in the registers, immediates and labels, without
-running the encoder. This is DynASM's `Rq(n)`, runtime `imm` and `=>pc`.
-
-```python
-from jita import Assembler, Fragment, Hole, Label, label
-from jita.x64 import *
-
-dst, src, k, exit_ = Hole.gp64("dst"), Hole.gp64("src"), Hole.imm32("k"), Hole.label("exit")
-
-frag = Fragment()
-with frag:
-    mov(dst, qword[src + 8])
-    add(dst, k)
-    jz(exit_)
-    label("again")            # local: every instance gets its own label
-    dec(dst)
-    jnz.short("again")
-
-a = Assembler()
-with a:
-    done = Label()
-    frag.instantiate(dst=rbx, src=rdi, k=1, exit=done)
-    inst = frag.instantiate(dst=r12, src=rsp, k=-5, exit=done)
-    label(done)
-    ret()
-
-inst.labels["again"]          # the label this instance's "again" became
-len(frag)                     # 23: every instance has the same length
-```
-
-Holes are typed: `Hole.gp8/gp16/gp32/gp64`, `Hole.xmm`, `Hole.ymm` for
-registers (`Hole.fp32/fp64` on aarch64), `Hole.imm8/imm16/imm32/imm64` for
-immediates and `Hole.label` for anything a Label is accepted as (branch
-targets, `[rip + l]`, `mov r64, l`, data directives). gp64 holes also work
-as the base or index of a memory operand. The value for each hole is passed
-by name to `instantiate`, which checks it: a register of the right class and
-size, an int in the range the instruction accepts, a Label, a label name or
-an Extern. For an Extern, `jmp(l)` and `mov(rax, l)` refer to the extern
-itself and `[rip + l]` to its pointer slot. A hole that appears in no
-instruction must be announced with `frag.declare(hole)` before it can be
-passed. A fragment can be instantiated into another fragment, and a hole of
-the outer fragment is a valid value for an inner hole of the same type,
-which leaves that field open until the outer fragment is instantiated.
-
-Since an instance must have the same length for any register, an
-instruction with a register hole is always encoded in its general form: a
-REX prefix is always present (so `ah`..`bh` cannot be combined with holes),
-a base register hole always gets a SIB byte and a displacement, a hole in
-the r/m or index field uses the 3 byte VEX prefix, and accumulator short
-forms are never used. An immediate hole picks the form by its declared
-size, not its value: `add(r, Hole.imm8(..))` is the sign-extended imm8 form
-and `mov(eax, Hole.imm8(..))` is an error. `Fragment(align=16)` requires
-instances to start at that alignment. `examples/fragments.py` builds a
-function out of several instances.
-
 ## Structures
 
 `typed(base, Type)` views memory as a `ctypes.Structure` or `Union`, so
@@ -293,8 +233,6 @@ and `p.ctype` give the start address, `ctypes.sizeof` and the type; a field
 that clashes with those names is reached as `p["size"]`. Pointer fields are
 not followed: load the pointer and call `typed` on the register again. Bit
 fields and `c_longdouble` have no memory operand and raise `EncodeError`.
-In a fragment, gp64 register holes work as the base and as an array index:
-`typed(Hole.gp64("s"), Point).v[Hole.gp64("i")]`.
 
 ## aarch64
 
@@ -378,15 +316,6 @@ loads from the extern's address. To call a function at any distance, load
 its address from the extern's pointer slot, an 8 byte slot in the `externs`
 section as on x64: `ldr(x16, a.extern_slot(ext)); blr(x16)`.
 
-Fragments work on aarch64 too. Register holes are `Hole.gp64`,
-`Hole.gp32`, `Hole.fp32` and `Hole.fp64`, usable in any register operand,
-as a memory base (`mem[src + 8]`, `mem.pre[src - 16]`) and as a plain
-64 bit index (`mem[x0 + idx]`). A general purpose hole cannot be filled
-with register 31 (`sp`, `xzr`, `wzr`), because whether 31 means the stack
-pointer or zero depends on where the register sits. Label holes work as on
-x64. Immediate holes are not supported in aarch64 instructions (data
-directives still take them), and a hole cannot carry a shift or an extend.
-
 ## Compared with DynASM
 
 jita follows DynASM's model (hand-written instructions, labels, sections,
@@ -394,9 +323,7 @@ externs, runtime linking) and its instruction tables, and differs in these
 ways:
 
 - Everything is known when an instruction is encoded, so there is no
-  preprocessor, no action list and no separate `dasm_link`/`dasm_encode`
-  step. A `Fragment` gives back the encode-once, fill-in-later behaviour
-  where it matters.
+  preprocessor, no action list and no separate `dasm_link`/`dasm_encode` step.
 - No silent branch relaxation. `jmp`/`jcc` to a label always use rel32,
   `jmp.short` always uses rel8 and linking fails if the target is too far.
 - Immediates are range checked by value, and register 31 on aarch64 is

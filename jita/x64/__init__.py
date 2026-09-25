@@ -46,13 +46,6 @@ class X64Arch(Arch):
     def icache_flush(self, addr: int, size: int) -> None:
         pass  # x86 keeps instruction and data caches coherent
 
-    def hole_mem(self, hole: Any, scale: int | None = None) -> _mem.MemExpr:
-        """The address a gp64 register hole builds: `[hole]`, or
-        `[hole*scale]` when multiplied (used by `Hole.__add__/__mul__`)."""
-        if scale is None:
-            return _mem.MemExpr(base=hole)
-        return _mem.MemExpr(index=hole, scale=scale)
-
 
 ARCH = X64Arch()
 

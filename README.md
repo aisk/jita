@@ -35,8 +35,7 @@ with build().load() as mod:
 Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands
 are written as `qword[rbx + rcx*8 + 8]` or `mem[x0 + 8]`, labels are
 strings or `Label` objects, and macros are plain Python functions. Beyond
-that jita has sections and writable data, `Extern` symbols, `Fragment`s that
-are encoded once and instantiated with different registers, `typed()` views
+that jita has sections and writable data, `Extern` symbols, `typed()` views
 over `ctypes` structures, and a listing tool that prints the generated code
 with its bytes.
 
@@ -44,8 +43,8 @@ The full API is described in [docs/reference.md](docs/reference.md). The
 `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, calls into libc, an SSE2 dot
 product, a linked list of ctypes structures, code specialized by
-Python-level parameters, a function assembled from fragments and an
-aarch64 function whose listing prints on any host.
+Python-level parameters and an aarch64 function whose listing prints on
+any host.
 
 ## Install and run
 

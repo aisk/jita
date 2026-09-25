@@ -7,7 +7,6 @@
     movsd(xmm1, p.v[rcx])       # register index, scaled by the element size
     lea(rax, p.v.addr)          # unsized address of the field
     typed(rax, Node).next       # pointer fields are plain qword scalars
-    typed(src, Point).v[idx]    # gp64 register holes work as base and index
 
 Offsets and sizes come from ctypes itself (`Type.field.offset`,
 `ctypes.sizeof`), so `_pack_`, `_anonymous_`, unions and inherited fields
@@ -21,7 +20,6 @@ from dataclasses import replace
 from typing import Any
 
 from ..core.errors import EncodeError
-from ..core.operand import Hole
 from .mem import MemExpr
 from .regs import Reg
 
@@ -32,29 +30,22 @@ _SCALARS = (ctypes._SimpleCData, ctypes._Pointer, ctypes._CFuncPtr)
 _SCALAR_SIZES = (1, 2, 4, 8)
 
 
-def _is_reg_hole(x: Any) -> bool:
-    return isinstance(x, Hole) and x.kind == "reg"
-
-
-def typed(base: Reg | Hole | MemExpr, ctype: type) -> Any:
+def typed(base: Reg | MemExpr, ctype: type) -> Any:
     """View the memory at `base` as the ctypes type `ctype`.
 
-    `base` is a register (`rdi`), a gp64 register hole in a Fragment, or an
-    unsized memory expression (`rdi + 16`, `rip + "table"`). A Structure
-    or Union gives a `Typed`
+    `base` is a register (`rdi`) or an unsized memory expression
+    (`rdi + 16`, `rip + "table"`). A Structure or Union gives a `Typed`
     whose attributes are its fields, an Array gives a `TypedArray`, and a
     scalar type gives the sized memory operand directly.
     """
-    if isinstance(base, Reg) or _is_reg_hole(base):
+    if isinstance(base, Reg):
         mem = MemExpr(base=base)
     elif isinstance(base, MemExpr):
         if base.size is not None:
             raise EncodeError(f"typed() needs an unsized address, got {base}; drop the size prefix")
         mem = base
     else:
-        raise TypeError(
-            f"typed() base must be a register, register hole or memory expression, got {base!r}"
-        )
+        raise TypeError(f"typed() base must be a register or memory expression, got {base!r}")
     if not isinstance(ctype, type) or not issubclass(ctype, (*_AGGREGATES, ctypes.Array, *_SCALARS)):
         raise TypeError(f"typed() expects a ctypes type, got {ctype!r}")
     return _view(mem, ctype)
@@ -146,9 +137,8 @@ class TypedArray:
     """A ctypes Array at a memory address.
 
     `view[i]` with an int is the element at a constant index, `view[reg]`
-    the element at a register index. The index is a register or, in a
-    Fragment, a gp64 register hole; the element size must be 1, 2, 4 or 8
-    and the address must not already have an index register. Elements are
+    the element at a register index (the element size must be 1, 2, 4 or 8
+    and the address must not already have an index register). Elements are
     sized `MemExpr`s, `Typed` or nested `TypedArray` views like fields.
     """
 
@@ -172,10 +162,10 @@ class TypedArray:
     def __len__(self) -> int:
         return self.ctype._length_
 
-    def __getitem__(self, i: int | Reg | Hole) -> Any:
+    def __getitem__(self, i: int | Reg) -> Any:
         elem = self.element
         esize = ctypes.sizeof(elem)
-        if isinstance(i, Reg) or _is_reg_hole(i):
+        if isinstance(i, Reg):
             if esize not in _SCALAR_SIZES:
                 raise EncodeError(
                     f"{self.ctype.__name__}[{i}]: element size {esize} is not a valid scale (1, 2, 4, 8)"

@@ -11,8 +11,7 @@ from typing import TYPE_CHECKING, Any
 from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
 from .labels import Extern, Label, PcLabels, _bind_seq
-from .operand import Hole
-from .patch import ABS64, ABS_BY_SIZE, Patch, PatchKind, SlotKind, imm_kind
+from .patch import ABS64, ABS_BY_SIZE, Patch, PatchKind, SlotKind
 from .section import Section
 
 if TYPE_CHECKING:
@@ -172,7 +171,7 @@ class Assembler:
     def emit(self, data: bytes | bytearray) -> None:
         self.cur.buf += data
 
-    def emit_patch(self, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
+    def emit_patch(self, kind: PatchKind, target: Label | Extern, addend: int = 0) -> None:
         """Reserve kind.size zero bytes at pos and record the Patch over
         them with `add_patch`. Nothing stays emitted if the patch is
         rejected."""
@@ -185,33 +184,25 @@ class Assembler:
             del sec.buf[start:]
             raise
 
-    def add_patch(self, offset: int, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
+    def add_patch(self, offset: int, kind: PatchKind, target: Label | Extern, addend: int = 0) -> None:
         """Record a patch over bytes already emitted in the current section,
         without reserving new ones. The bytes there are the template the
-        kind writes into: zero for x86 style fields, an instruction word
-        whose field a kind ORs in (aarch64), or a register field that a
-        `jita.core.patch.BitsKind` replaces.
+        kind writes into: zero for x86 style fields or an instruction word
+        whose field a kind ORs in (aarch64).
 
         A `SlotKind` patch to an Extern (`qword[rip + ext]`) is recorded as
         `kind.field` to the extern's pointer slot, see `extern_slot`.
         """
-        if not isinstance(target, (Label, Extern, Hole)):
-            raise TypeError(f"patch target must be a Label, Extern or Hole, got {target!r}")
+        if not isinstance(target, (Label, Extern)):
+            raise TypeError(f"patch target must be a Label or Extern, got {target!r}")
         if isinstance(kind, SlotKind) and not isinstance(target, Extern):
             raise TypeError(f"{kind.name} patch target must be an Extern, got {target!r}")
         sec = self.cur
         if not 0 <= offset <= sec.pos() - kind.size:
             raise ValueError(f"patch at {offset} is outside the emitted bytes")
-        if isinstance(target, Hole):
-            self.accept_hole(target)
         if isinstance(kind, SlotKind):
             kind, target = kind.field, self.extern_slot(target)
         sec.patches.append(Patch(offset, kind, target, addend))
-
-    def accept_hole(self, hole: Hole) -> None:
-        """Called before an instruction or directive using `hole` is emitted.
-        Holes only make sense in a Fragment; a plain Assembler rejects them."""
-        raise EncodeError(f"{hole!r} can only be used inside a Fragment")
 
     def note_insn(self, start: int, mnemonic: str, ops: tuple = ()) -> None:
         """Record that the bytes from `start` to pos form one instruction.
@@ -303,9 +294,6 @@ class Assembler:
         for v in vals:
             if isinstance(v, str):
                 v = self.named(v)
-            if isinstance(v, Hole):
-                self._data_hole(size, v)
-                continue
             if isinstance(v, (Label, Extern)):
                 self.emit_patch(ABS_BY_SIZE[size], v)
                 continue
@@ -316,24 +304,16 @@ class Assembler:
                 raise EncodeError(f"value {v:#x} does not fit in {size} bytes")
             self.emit((v & ((1 << bits) - 1)).to_bytes(size, "little"))
 
-    def _data_hole(self, size: int, hole: Hole) -> None:
-        if hole.kind == "label":
-            self.emit_patch(ABS_BY_SIZE[size], hole)
-        elif hole.kind == "imm" and hole.size == size:
-            self.emit_patch(imm_kind(size, *hole.range), hole)
-        else:
-            raise EncodeError(f"{hole!r} cannot be a {size} byte data value")
-
-    def byte(self, *vals: int | str | Label | Extern | Hole) -> None:
+    def byte(self, *vals: int | str | Label | Extern) -> None:
         self._data(1, vals)
 
-    def word(self, *vals: int | str | Label | Extern | Hole) -> None:
+    def word(self, *vals: int | str | Label | Extern) -> None:
         self._data(2, vals)
 
-    def dword(self, *vals: int | str | Label | Extern | Hole) -> None:
+    def dword(self, *vals: int | str | Label | Extern) -> None:
         self._data(4, vals)
 
-    def qword(self, *vals: int | str | Label | Extern | Hole) -> None:
+    def qword(self, *vals: int | str | Label | Extern) -> None:
         self._data(8, vals)
 
     def bytes(self, data: bytes) -> None:

@@ -13,15 +13,6 @@ DynASM's C runtime (``dasm_arm64.h``) fills in later collapse into their
 constant behavior: immediates are checked and placed here, and only
 branch targets become patches (see `jita.aarch64.patch`).
 
-Fragment holes. A register hole (`Hole.gp64/gp32/fp32/fp64`) is encoded
-as a register of its type numbered 0 and recorded as `RegField` patches
-over its 5 bit field (Rd/Rt at bit 0, Rn at 5, Ra/Rt2 at 10, Rm at 16).
-Instantiating a general purpose hole with register 31 (sp, xzr or wzr)
-is an error, because whether 31 means sp or the zero register depends on
-the position. A label hole is a branch or literal target like a Label.
-Immediate holes are not supported. The writeback overlap check below only
-sees a hole as overlapping when it is the same hole.
-
 Differences from DynASM. Apart from the first two they are rejections of
 operands DynASM encodes into something other than what was written:
 
@@ -62,11 +53,11 @@ from typing import Any
 
 from ..core.errors import EncodeError
 from ..core.labels import Extern, Label
-from ..core.operand import Hole, Imm
+from ..core.operand import Imm
 from ..core.patch import PatchKind
 from .mem import Addr, MemExpr
-from .patch import REL14, REL19, REL21_ADR, REL21_ADRP, REL26, RegField, reg_field
-from .regs import Mod, Reg, RegMod, reg_type
+from .patch import REL14, REL19, REL21_ADR, REL21_ADRP, REL26
+from .regs import Mod, Reg, RegMod
 from .table import MAP_ALIAS, MAP_BTI, MAP_COND, MAP_EXTEND, MAP_OP, MAP_SHIFT
 
 __all__ = ["encode", "MNEMONIC_ARGC", "imm13", "fpimm"]
@@ -175,8 +166,6 @@ class _Alt:
         self.rtype: str | None = None  # DynASM's parse_reg_type
         self.sp_ok: set[int] = set()
         self.fixup: tuple[PatchKind, Any] | None = None
-        # Register holes: (bit position of the 5 bit field, hole).
-        self.holes: list[tuple[int, Hole]] = []
 
     def fail(self, msg: str, rank: int = 0, pos: int | None = None) -> _Fail:
         return _Fail(msg, self.n if pos is None else pos, rank)
@@ -192,8 +181,6 @@ class _Alt:
     def reg(self, shift: int, i: int | None = None) -> int:
         i = self.n if i is None else i
         q = self.param(i)
-        if isinstance(q, Hole):
-            return self.hole(q, shift, i)
         if not isinstance(q, Reg):
             raise self.fail("expected a register", pos=i)
         if q.kind == "sp":
@@ -210,29 +197,12 @@ class _Alt:
             raise self.fail("register size mismatch", 1, i)
         return q.code << shift
 
-    def hole(self, q: Hole, shift: int, i: int) -> int:
-        # A register hole classifies like a register of its type whose
-        # number is unknown. Register 31 (sp or xzr, depending on the
-        # position) is rejected when the fragment is instantiated.
-        rt = reg_type(q)
-        if rt is None:
-            raise self.fail(f"{q!r} is not an aarch64 register hole", pos=i)
-        if not self.rtype:
-            self.rtype = rt
-        elif self.rtype != rt:
-            raise self.fail("register size mismatch", 1, i)
-        self.holes.append((shift, q))
-        return 0
-
-    def base(self, r: Reg | Hole) -> int:
+    def base(self, r: Reg) -> int:
         # parse_reg_base: an x register or sp at bits 5-9.
         if self.rtype:
             if self.rtype != "x":
                 raise self.fail("register size mismatch")
         self.rtype = None
-        if isinstance(r, Hole):
-            self.holes.append((5, r))
-            return 0
         return r.code << 5
 
     # immediates
@@ -288,7 +258,7 @@ class _Alt:
                 raise self.fail(f"expected an extend (uxtb..sxtx or lsl), got {q}")
         if q.kind in ("uxtx", "sxtx"):
             first, prev = self.params[0], self.params[self.n - 1]
-            if reg_type(prev) == "w" and reg_type(first) == "x":
+            if isinstance(prev, Reg) and prev.rt == "w" and isinstance(first, Reg) and first.rt == "x":
                 # jita: the 64 bit extends read all of the register.
                 raise self.fail(f"{q.kind} extends a 64 bit register, write the x register", 1)
         if q.amount is None:
@@ -325,15 +295,10 @@ class _Alt:
             return op + self.imm(m.disp, 9, 12, 0, True, "signed 9 bit offset") + 0xC00
         if m.index is not None:
             idx = m.index
-            if isinstance(idx, Hole):
-                self.holes.append((16, idx))
-            else:
-                op += idx.code << 16
-            op += 0x00200800
-            rt = reg_type(idx)
+            op += (idx.code << 16) + 0x00200800
             mod = m.mod
             if mod is None:
-                if rt != "x":
+                if idx.rt != "x":
                     raise self.fail("bad index register type")
                 return op + 0x6000
             if mod.amount is None or mod.amount == 0:
@@ -342,7 +307,7 @@ class _Alt:
                 op += 0x1000
             else:
                 raise self.fail(f"bad index scale {mod.amount} (must be 0 or {scale})", 1)
-            if rt == "x":
+            if idx.rt == "x":
                 if mod.kind == "lsl":
                     return op + 0x6000
                 if mod.kind == "sxtx":
@@ -370,12 +335,10 @@ class _Alt:
     def overlap(self, m: MemExpr) -> None:
         # jita: writeback into a register that is also transferred is
         # CONSTRAINED UNPREDICTABLE.
-        # A hole is only known to overlap when it is the same hole.
-        b = m.base
-        if m.mode == "offset" or (isinstance(b, Reg) and b.kind == "sp"):
+        if m.mode == "offset" or m.base.kind == "sp":
             return
         for r in self.params[: self.n]:
-            if r is b or (isinstance(r, Reg) and isinstance(b, Reg) and r.kind == "gp" and r.code == b.code):
+            if isinstance(r, Reg) and r.kind == "gp" and r.code == m.base.code:
                 raise self.fail(f"writeback to {m.base}, which is also transferred, is unpredictable", 1)
 
     def load_pair(self, op: int) -> int:
@@ -407,7 +370,7 @@ class _Alt:
         q = self.param()
         if isinstance(q, str):
             q = self.asm.named(q)
-        elif not isinstance(q, (Label, Extern)) and not (isinstance(q, Hole) and q.kind == "label"):
+        elif not isinstance(q, (Label, Extern)):
             raise self.fail("expected a label")
         self.fixup = (_branch_kind(op), q)
 
@@ -573,10 +536,10 @@ def _alias(kind: str, params: list[Any], fail) -> list[Any]:
     p = list(params)
     if not all(_is_int(x) for x in p[2:]):
         raise fail("expected an immediate")
-    rt = reg_type(p[0])
-    if rt is None:
+    r = p[0]
+    if not isinstance(r, Reg):
         raise fail("expected a register")
-    size = 32 if rt == "w" else 64
+    size = 32 if r.rt == "w" else 64
     if kind != "lsl":
         # jita: DynASM does not check the field, so an out of range lsb or
         # width silently becomes a different bitfield operation.
@@ -594,25 +557,6 @@ def _alias(kind: str, params: list[Any], fail) -> list[Any]:
             raise fail(f"shift amount {sh} out of range (0..{size - 1})")
         p[2:3] = [(size - sh) % size, size - 1 - sh]
     return p
-
-
-# -- register holes ------------------------------------------------------------
-
-_FIELD_NAMES = {0: "rd", 5: "rn", 10: "ra", 16: "rm"}
-
-
-def _field_kinds(shift: int, gp: bool) -> list[tuple[int, RegField]]:
-    """The (byte offset, RegField) pairs that write a register number into
-    the 5 bit field at bit `shift` of a little endian instruction word.
-    Rn (bits 5-9) spans two bytes. Register 31 is forbidden for general
-    purpose holes: it would be sp or xzr depending on the position."""
-    name = _FIELD_NAMES[shift]
-    byte, bit = divmod(shift, 8)
-    lo = min(5, 8 - bit)
-    out = [(byte, reg_field(name, bit, lo, 0, gp))]
-    if lo < 5:
-        out.append((byte + 1, reg_field(name + ".hi", 0, 5 - lo, lo, gp)))
-    return out
 
 
 # -- entry point ---------------------------------------------------------------
@@ -646,8 +590,6 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], name: str | None = None)
     for op in ops:
         if isinstance(op, Addr):
             raise _error(mnemonic, ops, f"wrap the address in mem[...]: mem[{op}]")
-        if isinstance(op, Hole) and op.kind == "imm":
-            raise _error(mnemonic, ops, "immediate holes are not supported on aarch64")
     params = _flatten(ops)
     key = f"{mnemonic}_{len(params)}"
     alias = MAP_ALIAS.get(key)
@@ -679,16 +621,8 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], name: str | None = None)
         if word & 0xFFFFF800 == 0xD71F0800 and word & 31 == 31:
             # jita: the braa/brab modifier register 31 is sp, not xzr.
             raise _error(mnemonic, ops, "the modifier register cannot be xzr (register 31 means sp here)")
-        # Holes are checked first so that a rejected one emits nothing.
-        for _, h in alt.holes:
-            asm.accept_hole(h)
-        if alt.fixup is not None and isinstance(alt.fixup[1], Hole):
-            asm.accept_hole(alt.fixup[1])
         start = asm.pos()
         asm.emit(word.to_bytes(4, "little"))
-        for shift, h in alt.holes:
-            for off, kind in _field_kinds(shift, h.regclass == "gp"):
-                asm.add_patch(start + off, kind, h)
         if alt.fixup is not None:
             # The kind ORs its field into the word at link time.
             kind, target = alt.fixup
