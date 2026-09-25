@@ -12,8 +12,12 @@
 A plain `call(STRLEN)` would be a rel32 call, which fails to link when
 libc is more than 2GB away from the code.
 
-Addresses of externs are supplied when loading, through the `externs`
-mapping. `Extern("name", address)` fixes the address up front instead.
+The three variants are entry points of one assembler, so the code is
+loaded once with `a.load()` and each entry becomes a callable with
+`mod.function(..., entry=name)`. `a.function` would load a separate copy
+per call. Addresses of externs are supplied when loading, through the
+`externs` mapping. `Extern("name", address)` fixes the address up front
+instead.
 
 Run with `uv run python examples/call_extern.py`.
 """
@@ -64,13 +68,14 @@ def build() -> Assembler:
 def main() -> None:
     libc = ctypes.CDLL(None)
     strlen_addr = ctypes.cast(libc.strlen, ctypes.c_void_p).value
-    with build().load(externs={"strlen": strlen_addr}) as mod:
-        sig = (ctypes.c_size_t, ctypes.c_char_p)
-        via_register = mod.function(*sig, entry="via_register")
-        via_extern_slot = mod.function(*sig, entry="via_extern_slot")
-        via_slot = mod.function(*sig, entry="via_slot")
-        s = b"hello from jita"
-        n1, n2, n3 = via_register(s), via_extern_slot(s), via_slot(s)
+    # The callables keep the module alive; no `with` or close() is needed.
+    mod = build().load(externs={"strlen": strlen_addr})
+    sig = (ctypes.c_size_t, ctypes.c_char_p)
+    via_register = mod.function(*sig, entry="via_register")
+    via_extern_slot = mod.function(*sig, entry="via_extern_slot")
+    via_slot = mod.function(*sig, entry="via_slot")
+    s = b"hello from jita"
+    n1, n2, n3 = via_register(s), via_extern_slot(s), via_slot(s)
     assert n1 == n2 == n3 == len(s)
     print(f"strlen via register: {n1}")
     print(f"strlen via extern slot: {n2}")

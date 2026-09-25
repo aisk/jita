@@ -6,14 +6,16 @@ structures and arrays become further views, and `p.items[rcx]` indexes an
 array with a register.
 
 The function below walks a linked list of `Node`s, sums every node's
-`items[0..count)` into its `total` field and returns the grand total.
+`items[0..count)` into its `total` field and returns the grand total. It
+is generated with the `function` decorator, and the listing line is taken
+from the callable's `assembler` attribute.
 
 Run with `uv run python examples/typed_struct.py`.
 """
 
 import ctypes
 
-from jita import Assembler
+from jita import function
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 
@@ -31,34 +33,34 @@ Node._fields_ = [
 ]
 
 
-def build() -> Assembler:
-    a = Assembler()
-    node = typed(rdi, Node)
-    with a:
-        # int64_t sum_list(Node *node)
-        xor(eax, eax)  # grand total
-        label("node")
-        test(rdi, rdi)
-        jz("done")
-        xor(edx, edx)  # this node's total
-        mov(r8d, node.count)
-        xor(ecx, ecx)
-        label("item")
-        cmp(ecx, r8d)
-        jae("stored")
-        movsxd(r9, node.items[rcx])  # dword[rdi + rcx*4 + items offset]
-        add(rdx, r9)
-        inc(ecx)
-        jmp("item")
-        label("stored")
-        mov(node.total, rdx)
-        or_(node.flags, 1)  # word operand, size from the field
-        add(rax, rdx)
-        mov(rdi, node.next)  # pointer fields are plain qwords
-        jmp("node")
-        label("done")
-        ret()
-    return a
+node = typed(rdi, Node)
+
+
+@function(ctypes.c_int64, ctypes.POINTER(Node))
+def sum_list(a):
+    # int64_t sum_list(Node *node)
+    xor(eax, eax)  # grand total
+    label("node")
+    test(rdi, rdi)
+    jz("done")
+    xor(edx, edx)  # this node's total
+    mov(r8d, node.count)
+    xor(ecx, ecx)
+    label("item")
+    cmp(ecx, r8d)
+    jae("stored")
+    movsxd(r9, node.items[rcx])  # dword[rdi + rcx*4 + items offset]
+    add(rdx, r9)
+    inc(ecx)
+    jmp("item")
+    label("stored")
+    mov(node.total, rdx)
+    or_(node.flags, 1)  # word operand, size from the field
+    add(rax, rdx)
+    mov(rdi, node.next)  # pointer fields are plain qwords
+    jmp("node")
+    label("done")
+    ret()
 
 
 def main() -> None:
@@ -67,11 +69,8 @@ def main() -> None:
         n.items[:] = [10 * i + k for k in range(8)]
         if i + 1 < len(nodes):
             n.next = ctypes.pointer(nodes[i + 1])
-    a = build()
-    with a.load() as mod:
-        sum_list = mod.function(ctypes.c_int64, ctypes.POINTER(Node))
-        total = sum_list(ctypes.pointer(nodes[0]))
-    print(next(line for line in listing(a).splitlines() if "movsxd" in line))
+    total = sum_list(ctypes.pointer(nodes[0]))
+    print(next(line for line in listing(sum_list.assembler).splitlines() if "movsxd" in line))
     print(f"totals = {[n.total for n in nodes]}, flags = {[n.flags for n in nodes]}")
     print(f"sum = {total}")
 

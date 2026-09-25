@@ -1,26 +1,31 @@
-"""One generator, different machine code: the jita spelling of DynASM `.if`.
+"""Specialize code at runtime: the jita spelling of DynASM `.if`.
 
-DynASM decides at preprocessing time with `.if`/`.endif`. In jita the
-generator is ordinary Python, so plain `if` statements, loops and function
-parameters select what gets emitted. Here `gen_reduce` builds a reduction
-over an int64 array, specialized by:
+DynASM decides at preprocessing time with `.if`/`.endif`, and fills in
+runtime values through encode-once templates. In jita the generator is
+ordinary Python that runs when the program does, so a factory function
+with a `function`-decorated body is all it takes. `make_reduce` returns a
+reduction over an int64 array, and the body closes over the factory's
+parameters:
 
-- `op`: "add" or "max", picked by the generator, not tested at runtime,
-- `clamp`: when set, the result is clamped to `clamp` with a cmov,
-- `unroll`: 1 or 2 elements per loop iteration.
+- `op`: "add" or "max", picked by a Python `if`, not tested at runtime,
+- `clamp`: when set, baked into the code as an immediate and applied
+  with a cmov,
+- `unroll`: 1 or 2 elements per loop iteration, emitted by a Python loop.
 
-The short loop bodies use `jnz.short`, which emits a rel8 branch and fails
-loudly at link time if the target is ever out of range. jita never shrinks
-branches on its own.
+Every call to `make_reduce` generates and loads a new function. The short
+loop bodies use `jnz.short`, which emits a rel8 branch and fails loudly at
+link time if the target is ever out of range. jita never shrinks branches
+on its own.
 
-The listing tool shows the code each variant produced.
+The listing of each variant is printed from `fn.assembler` and the image
+of the loaded module, `fn.module.image`, so it shows real addresses.
 
 Run with `uv run python examples/conditional_codegen.py`.
 """
 
 import ctypes
 
-from jita import Assembler, Label
+from jita import Label, function
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 
@@ -38,10 +43,12 @@ def combine(op, acc, val):
         raise ValueError(f"unknown op {op!r}")
 
 
-def gen_reduce(a: Assembler, op: str, clamp: int | None = None, unroll: int = 1) -> None:
-    # int64_t reduce(const int64_t *p /* rdi */, size_t n /* rsi */), n % unroll == 0
+def make_reduce(op: str, clamp: int | None = None, unroll: int = 1):
     assert unroll in (1, 2)
-    with a:
+
+    @function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
+    def reduce(a):
+        # int64_t reduce(const int64_t *p /* rdi */, size_t n /* rsi */), n % unroll == 0
         loop, done = Label(), Label()
         if op == "add":
             xor(eax, eax)
@@ -62,33 +69,27 @@ def gen_reduce(a: Assembler, op: str, clamp: int | None = None, unroll: int = 1)
             cmovg(rax, rcx)
         ret()
 
-
-def run(values: list[int], **params) -> tuple[int, str]:
-    a = Assembler()
-    gen_reduce(a, **params)
-    arr = (ctypes.c_int64 * len(values))(*values)
-    with a.load() as mod:
-        fn = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-        # With the linked image the listing shows real addresses and branch bytes.
-        return fn(arr, len(values)), listing(a, mod.image)
+    return reduce
 
 
 def main() -> None:
     values = [7, -3, 12, 5, 9, 1]
+    arr = (ctypes.c_int64 * len(values))(*values)
     variants = [
         dict(op="add"),
         dict(op="add", clamp=20, unroll=2),
         dict(op="max", unroll=2),
     ]
+    results = []
     for params in variants:
-        result, text = run(values, **params)
+        fn = make_reduce(**params)
+        result = fn(arr, len(values))
+        results.append(result)
         print(f"reduce({', '.join(f'{k}={v!r}' for k, v in params.items())}) = {result}")
-        print(text)
+        print(listing(fn.assembler, fn.module.image))
         print()
 
-    assert run(values, op="add")[0] == 31
-    assert run(values, op="add", clamp=20, unroll=2)[0] == 20
-    assert run(values, op="max", unroll=2)[0] == 12
+    assert results == [31, 20, 12]
 
 
 if __name__ == "__main__":

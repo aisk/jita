@@ -9,42 +9,43 @@ call through `ctypes`. It has no runtime dependencies and needs Python 3.14.
 
 ```python
 import ctypes
-from jita import Assembler, label
+from jita import function
 from jita.x64 import *
 
-def build():
-    a = Assembler()
-    with a:                       # module level mnemonics emit into `a`
-        xor(eax, eax)             # int64_t sum(int64_t *p, size_t n)
-        test(rsi, rsi)
-        jz("done")
-        label("loop")
-        add(rax, qword[rdi])
-        add(rdi, 8)
-        dec(rsi)
-        jnz("loop")
-        label("done")
-        ret()
-    return a
+@function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
+def sum_array(a):                 # the body is a generator that runs once
+    xor(eax, eax)                 # int64_t sum_array(int64_t *p, size_t n)
+    test(rsi, rsi)
+    jz("done")
+    label("loop")
+    add(rax, qword[rdi])
+    add(rdi, 8)
+    dec(rsi)
+    jnz("loop")
+    label("done")
+    ret()
 
-with build().load() as mod:
-    fn = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-    print(fn((ctypes.c_int64 * 3)(1, 2, 3), 3))   # 6
+print(sum_array((ctypes.c_int64 * 3)(1, 2, 3), 3))   # 6
 ```
 
-Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands
-are written as `qword[rbx + rcx*8 + 8]` or `mem[x0 + 8]`, labels are
-strings or `Label` objects, and macros are plain Python functions. Beyond
-that jita has sections and writable data, `Extern` symbols, `typed()` views
-over `ctypes` structures, and a listing tool that prints the generated code
-with its bytes.
+`@function` runs the body inside a fresh `Assembler`, loads the result
+and replaces the name with the `ctypes` callable. Inside a factory the body
+closes over its parameters, so Python values and `if` statements decide
+what code is emitted. Registers are objects (`rax`, `r8d`, `xmm0`, `x0`,
+`w1`), memory operands are written as `qword[rbx + rcx*8 + 8]` or
+`mem[x0 + 8]`, labels are strings or `Label` objects, and macros are plain
+Python functions. Without the decorator, `a.function(...)` turns any
+`Assembler` into a callable, and `a.load()` gives a `Module` for code with
+several entry points or writable data. Beyond that jita has sections,
+`Extern` symbols, `typed()` views over `ctypes` structures, and a listing
+tool that prints the generated code with its bytes.
 
 The full API is described in [docs/reference.md](docs/reference.md). The
 `examples/` directory has runnable programs: a loop with a macro, a
-bytecode interpreter with a dispatch table, calls into libc, an SSE2 dot
-product, a linked list of ctypes structures, code specialized by
-Python-level parameters and an aarch64 function whose listing prints on
-any host.
+bytecode interpreter with a dispatch table, three ways to call into libc
+from one module, an SSE2 dot product, a linked list of ctypes structures,
+a factory that specializes code by Python parameters and an aarch64
+function whose listing prints on any host.
 
 ## Install and run
 

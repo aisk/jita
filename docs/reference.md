@@ -6,7 +6,7 @@ The README has the short version.
 
 Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Labels](#labels) · [Externs](#externs) · [Data](#data-directives) ·
-[Linking and loading](#linking-and-loading) · [Listings](#listings) ·
+[Functions](#functions) · [Listings](#listings) ·
 [x64](#x64) · [Structures](#structures) ·
 [aarch64](#aarch64) · [Compared with DynASM](#compared-with-dynasm) ·
 [Errors](#errors)
@@ -17,19 +17,19 @@ Contents: [Assembler](#assembler) · [Sections](#sections) ·
 from jita import Assembler, label
 from jita.x64 import *
 
-a = Assembler()               # host architecture
-a = Assembler("x64")          # or "aarch64", or the package jita.x64
-with a:                       # module level mnemonics emit into `a`
-    mov(rax, 1)
+with Assembler() as a:        # host architecture
+    mov(rax, 1)               # module level mnemonics emit into `a`
     ret()
 a.mov(rax, 1)                 # every mnemonic is also a method
+b = Assembler("x64")          # or "aarch64", or the package jita.x64
 ```
 
-`with a:` makes `a` the current assembler for the module level instruction
-functions and the `label()` directive. Contexts nest, so a macro is just a
-Python function that emits instructions, and DynASM's `.if` is a Python
-`if` in the generator. `jita.current()` returns the active assembler.
-Outside any context use the method forms.
+`with Assembler() as a:`, or `with a:` for an existing one, makes `a` the
+current assembler for the module level instruction functions and the
+`label()` directive. Contexts nest, so a macro is just a Python function
+that emits instructions, and DynASM's `.if` is a Python `if` in the
+generator. `jita.current()` returns the active assembler. Outside any
+context use the method forms.
 
 Instruction names are lowercase. The x64 mnemonics that clash with Python
 keywords or builtins are `and_`, `or_`, `not_` and `int_`; on aarch64
@@ -80,8 +80,8 @@ name twice. `a.pc[i]` returns the same anonymous label for the same index,
 like DynASM's `=>i`; `len(a.pc)` is the highest index plus one.
 
 Named labels become symbols of the linked image and the loaded module
-(`img.address("entry")`, `mod.function(..., entry="entry")`). A label used
-as a `mov r64` immediate or as a `qword` value becomes its 64 bit absolute
+(`img.address("entry")`, `a.function(..., entry="entry")`). A label used as
+a `mov r64` immediate or as a `qword` value becomes its 64 bit absolute
 address. Labels are bound once; binding twice or using a label bound in
 another assembler is a `LinkError`.
 
@@ -98,19 +98,19 @@ puts = Extern("puts", 0x7f00_1234)    # or fixed up front
 call(qword[rip + strlen])             # call through the pointer slot
 mov(rax, strlen); call(rax)           # 64 bit absolute address
 call(strlen)                          # direct rel32, must be within 2GB
-mod = a.load(externs={"strlen": addr})
+fn = a.function(ctypes.c_size_t, ctypes.c_char_p, externs={"strlen": addr})
 ```
 
-The `externs` mapping given to `link` or `load` wins over an address fixed
-in the constructor. `call(ext)` and `jmp(ext)` are rel32 and fail with
-`LinkError` when the target is more than 2GB from the code, which is common
-for shared libraries. An Extern used as a rip-relative memory operand
-refers instead to an 8 byte slot holding the extern's address. jita
-creates one slot per extern name in a read-only `externs` section laid
-out next to the code (`a.extern_slot(ext)` returns its label), so
-`call(qword[rip + ext])`, `jmp(qword[rip + ext])`,
-`mov(rax, qword[rip + ext])` and `lea(rax, ptr[rip + ext])` work at any
-distance. A displacement on a slot operand is an error.
+The `externs` mapping given to `link`, `load` or `function` wins over an
+address fixed in the constructor. `call(ext)` and `jmp(ext)` are rel32 and
+fail with `LinkError` when the target is more than 2GB from the code,
+which is common for shared libraries. An Extern used as a rip-relative
+memory operand refers instead to an 8 byte slot holding the extern's
+address. jita creates one slot per extern name in a read-only `externs`
+section laid out next to the code (`a.extern_slot(ext)` returns its
+label), so `call(qword[rip + ext])`, `jmp(qword[rip + ext])`, `mov(rax,
+qword[rip + ext])` and `lea(rax, ptr[rip + ext])` work at any distance. A
+displacement on a slot operand is an error.
 
 ## Data directives
 
@@ -128,28 +128,129 @@ Values are range checked by size. Labels and Externs become absolute
 addresses of the directive's width (`ABS8`..`ABS64` patches), so a `dword`
 of a label only links when the image base fits in 32 bits.
 
-## Linking and loading
+## Functions
+
+The usual path from generated code to something Python can call is
+`a.function`:
+
+```python
+import ctypes
+from jita import Assembler
+from jita.x64 import *
+
+with Assembler() as a:
+    lea(rax, ptr[rdi + rsi])      # int64_t add(int64_t x, int64_t y)
+    ret()
+add2 = a.function(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)
+print(add2(40, 2))                # 42
+```
+
+`a.function(restype, *argtypes, entry=None, externs=None)` loads the
+assembler into freshly mapped memory and returns a `ctypes` function
+pointer at `entry` (a label or name, default the start of the image).
+`externs` supplies extern addresses (see [Externs](#externs)). The memory
+is released when the callable is garbage collected, so closing it is
+optional (see [Modules](#modules)).
+
+The `function` decorator is one more layer on top. The decorated body runs
+once, at decoration time, inside a fresh `Assembler` that is also passed as
+its argument, and the decorated name becomes the callable. Inside a factory
+the body closes over the factory's parameters, which is how code is
+specialized at runtime: values become immediates and Python `if`
+statements pick what is emitted.
+
+```python
+import ctypes
+from jita import function
+from jita.x64 import *
+
+def make_scale(k, bias=0):
+    @function(ctypes.c_int64, ctypes.c_int64)
+    def scale(a):                 # int64_t scale(int64_t x): x * k + bias
+        imul(rax, rdi, k)         # k is an immediate in the code
+        if bias:                  # decided while generating, not at runtime
+            add(rax, bias)
+        ret()
+    return scale
+
+triple = make_scale(3)
+print(triple(7), make_scale(10, 1)(7))   # 21 71
+```
+
+`function(restype, *argtypes, entry=None, externs=None, arch=None)` takes
+the same arguments as `a.function`, plus `arch` for the assembler it
+creates (default: the host). The body needs the assembler argument for
+`a.pc`, `a.section`, `a.align` and the other methods, and ignores it
+otherwise. The body's `__name__`, `__qualname__` and `__doc__` are copied
+onto the callable. A decorated function at module level generates its code
+when the module is imported.
+
+Either way the callable carries what produced it: `fn.module` is the
+loaded `Module` and `fn.assembler` the `Assembler`, for listings, symbol
+addresses and writes into data.
+
+### Modules
+
+`a.load(externs=None)` is the step under `a.function`. It links the
+assembler at the address of freshly mapped memory, copies the image in,
+marks the read-only prefix executable and returns a `Module`. Use it when
+one piece of code has several entry points or data that Python updates.
+
+```python
+import ctypes
+from jita import Assembler
+from jita.x64 import *
+
+with Assembler() as a:
+    label("get")
+    mov(rax, qword[rip + "counter"])
+    ret()
+    label("bump")
+    add(qword[rip + "counter"], 1)
+    ret()
+    with a.section("vars", writable=True):
+        a.align(8)
+        label("counter")
+        a.qword(0)
+
+mod = a.load()
+get = mod.function(ctypes.c_int64, entry="get")
+bump = mod.function(None, entry="bump")
+mod.write("counter", (40).to_bytes(8, "little"))
+bump(); bump()
+print(get(), hex(mod.address("counter")))   # 42 and the address
+```
+
+`mod.function(restype, *argtypes, entry=None)` returns a callable at
+`entry` whose `module` attribute keeps the module alive. `mod.write(where,
+data)` overwrites bytes at a label, a symbol name or an offset from the
+image base; only writable sections accept writes, the executable prefix is
+a `LoadError`. `mod.address(label)` returns an absolute address and
+`mod.image` is the linked `Image`. The memory is unmapped when the module is
+garbage collected, or earlier by `mod.close()` or by leaving a
+`with a.load() as mod:` block. Calling a function of a closed module crashes
+the process.
+
+Every `a.function` call loads a fresh copy, so two functions made from the
+same assembler have separate memory and do not share writable data; load
+once with `a.load()` and use `mod.function` for each entry when they must.
+A raw address taken from a function, such as
+`ctypes.cast(fn, ctypes.c_void_p).value`, a pointer stored in C, or an
+extern passed to another module, does not keep the module alive, so keep
+the callable or the module referenced as long as the address is in use.
+
+### Linking without loading
 
 ```py
 img = a.link(base=0x1000, externs={...})   # Image: bytes plus addresses
 img.data, img.address("entry"), img.section_offsets, img.symbols
-
-with a.load(externs={...}) as mod:         # Module: mapped and executable
-    fn = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-    fn = mod.function(ctypes.c_int, entry="second")
-    mod.address("table")
-    mod.write("counter", (5).to_bytes(8, "little"))   # writable sections only
 ```
 
 `link` resolves every label and extern patch for the given base and
-returns an `Image`. `load` links at the address of freshly mapped memory,
-copies the image in, marks the read-only prefix executable and returns a
-`Module`. `Module.function(restype, *argtypes, entry=None)` builds a
-`ctypes` function pointer at `entry` (default: the start of the image); the
-function keeps the module alive. `Module.write` updates bytes in writable
-sections; writing into the executable prefix is a `LoadError`. `close()` or
-leaving the `with` block unmaps the memory. An assembler can be linked or
-loaded more than once, and labels bound after linking are detected.
+returns an `Image` without mapping anything, for example to write the bytes
+elsewhere or to print a listing at chosen addresses. An assembler can be
+linked or loaded more than once, and labels bound after linking are
+detected.
 
 ## Listings
 
@@ -157,6 +258,7 @@ loaded more than once, and labels bound after linking are detected.
 from jita.tools.listing import listing
 print(listing(a))             # offsets, bytes, one instruction per line
 print(listing(a, img))        # with linked addresses
+print(listing(fn.assembler, fn.module.image))   # a function at its real addresses
 ```
 
 Listings show every section, the bound labels, the bytes of each
@@ -324,6 +426,9 @@ ways:
 
 - Everything is known when an instruction is encoded, so there is no
   preprocessor, no action list and no separate `dasm_link`/`dasm_encode` step.
+  Since the encoder itself runs at runtime, DynASM's encode-once templates
+  for runtime values (`Rq(n)`, runtime `imm`) are not needed either;
+  `gp64(n)` and plain Python values do that job.
 - No silent branch relaxation. `jmp`/`jcc` to a label always use rel32,
   `jmp.short` always uses rel8 and linking fails if the target is too far.
 - Immediates are range checked by value, and register 31 on aarch64 is
@@ -337,8 +442,9 @@ ways:
 
 All errors derive from `jita.JitaError`. `EncodeError` is raised when an
 instruction cannot be encoded with the given operands (wrong sizes, out of
-range immediate, unsupported combination). `LinkError` is raised by `link`
-and `load` for unbound labels, out of range branches, missing extern
-addresses and misaligned bases. `LoadError` covers executable memory
-allocation and writes outside writable sections. Plain `TypeError` is used
-for wrong Python types, such as a float where an int operand is expected.
+range immediate, unsupported combination). `LinkError` is raised by
+`link`, `load` and `function` for unbound labels, out of range branches,
+missing extern addresses and misaligned bases. `LoadError` covers
+executable memory allocation and writes outside writable sections. Plain
+`TypeError` is used for wrong Python types, such as a float where an int
+operand is expected.

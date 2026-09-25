@@ -3,7 +3,7 @@
 Builds `int64_t sum(const int64_t *p, size_t n)` and a small function that
 calls `strlen` through a pointer stored next to the code, then prints the
 listing. Encoding needs no aarch64 hardware; on an aarch64 host the code
-is also loaded and called.
+is also loaded once with `a.load()` and both entry points are called.
 
 Run with `uv run python examples/aarch64_hello.py`.
 """
@@ -57,12 +57,12 @@ def main() -> None:
         return
     libc = ctypes.CDLL(None)
     strlen = ctypes.cast(libc.strlen, ctypes.c_void_p).value
-    with a.load(externs={"strlen": strlen}) as mod:
-        total = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t, entry="sum")
-        values = list(range(1, 101))
-        print(f"sum(1..100) = {total((ctypes.c_int64 * 100)(*values), 100)}")
-        twice = mod.function(ctypes.c_size_t, ctypes.c_char_p, entry="twice_strlen")
-        print(f"twice_strlen = {twice(b'hello')}")
+    mod = a.load(externs={"strlen": strlen})
+    total = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t, entry="sum")
+    values = list(range(1, 101))
+    print(f"sum(1..100) = {total((ctypes.c_int64 * 100)(*values), 100)}")
+    twice = mod.function(ctypes.c_size_t, ctypes.c_char_p, entry="twice_strlen")
+    print(f"twice_strlen = {twice(b'hello')}")
 
 
 if __name__ == "__main__":
