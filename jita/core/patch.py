@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .errors import LinkError
-from .label import Extern, Label
+from .labels import Extern, Label
 from .operand import Hole
 
 

@@ -1,7 +1,7 @@
 import pytest
 
 import jita.x64 as x64
-from jita import Assembler, Extern, JitaError, Label, LinkError, current
+from jita import Assembler, Extern, JitaError, Label, LinkError, current, label
 from jita.core import ABS32, REL8, REL32, EncodeError, Hole
 from jita.tools.listing import listing
 
@@ -72,7 +72,7 @@ def test_label_here_uses_current():
     a = Assembler(x64)
     with a:
         a.bytes(b"\x90\x90")
-        lbl = Label("x").here()
+        lbl = label(Label("x"))
     assert lbl.section is a.cur and lbl.offset == 2
     assert a.link(0x1000).address("x") == 0x1002
 
@@ -326,17 +326,17 @@ def test_nested_contexts():
         a.__exit__(None, None, None)
 
 
-def test_pc_label_here_binds_into_owner():
+def test_pc_label_binds_into_owner():
     a, b = Assembler(x64), Assembler(x64)
     a.bytes(b"\x90")
-    # Outside any context the owner is used.
-    lbl = a.pc[0].here()
-    assert lbl.section is a.cur and lbl.offset == 1
-    # Inside another assembler's context the owner still wins.
+    lbl = a.label(a.pc[0])
+    assert lbl is a.pc[0] and lbl.section is a.cur and lbl.offset == 1
+    # Owned labels refuse to be defined in another assembler.
     with b:
         b.bytes(b"\x90" * 4)
-        a.pc[1].here()
-    assert a.pc[1].section is a.cur and a.pc[1].offset == 1
+        with pytest.raises(LinkError, match="another assembler"):
+            label(a.pc[1])
+    assert not a.pc[1].bound
     assert not b.labels
     # Owned labels cannot be bound into another assembler.
     with pytest.raises(LinkError, match="another assembler"):
@@ -344,15 +344,23 @@ def test_pc_label_here_binds_into_owner():
     assert a.label().owner is a
 
 
-def test_plain_label_here_still_uses_current():
+def test_label_directive_uses_current():
     a = Assembler(x64)
     lbl = Label()
     assert lbl.owner is None
     with pytest.raises(JitaError, match="no active Assembler"):
-        lbl.here()
+        label(lbl)
     with a:
-        lbl.here()
-    assert lbl.section is a.cur
+        a.bytes(b"\x90")
+        assert label(lbl) is lbl
+        anon = label()
+        named = label("n")
+    assert lbl.section is a.cur and lbl.offset == 1
+    assert anon.owner is a and anon.name is None and anon.offset == 1
+    assert named.name == "n" and a.named("n") is named
+    with pytest.raises(TypeError):
+        a.label(3)  # type: ignore[arg-type]
+    assert not hasattr(lbl, "here")
 
 
 def test_align_zero_fills_data_sections():
@@ -402,7 +410,8 @@ def test_star_exports():
     import types
 
     assert not [n for n in names if isinstance(ns[n], types.ModuleType)]
-    assert not names & {"arch", "assembler", "errors", "label", "operand", "patch", "section"}
+    assert not names & {"arch", "assembler", "errors", "labels", "operand", "patch", "section"}
+    assert callable(ns["label"]) and isinstance(ns["Label"], type)
 
 
 def test_named_label_forward_reference():
@@ -429,12 +438,12 @@ def test_named_label_in_data_directives():
     assert img.data[8:12] == (0x1010).to_bytes(4, "little")
 
 
-def test_named_label_bound_by_here():
+def test_named_label_bound_through_named():
     a = Assembler(x64)
     a.qword("x")
     with a:
         a.bytes(b"\x90")
-        a.named("x").here()
+        a.label(a.named("x"))
     assert a.link(0).address("x") == 9
 
 
@@ -451,8 +460,10 @@ def test_named_label_rejects_binding_a_different_object():
     with pytest.raises(LinkError, match="already referenced by name"):
         a.bind(Label("x"))
     a.label("x")  # the forward reference itself still binds fine
-    with pytest.raises(LinkError, match="duplicate label name"):
+    with pytest.raises(LinkError, match="already bound"):
         a.label("x")
+    with pytest.raises(LinkError, match="duplicate label name"):
+        a.bind(Label("x"))
 
 
 def test_named_label_rejects_bad_names():

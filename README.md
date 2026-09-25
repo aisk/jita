@@ -28,22 +28,21 @@ product and code specialized by Python-level parameters.
 
 ```python
 import ctypes
-from jita import Assembler, Label
+from jita import Assembler
 from jita.x64 import *
 
 def build():
     a = Assembler()
     with a:                       # module level mnemonics emit into `a`
-        loop = Label()            # a label object, bound with here()
         xor(eax, eax)             # int64_t sum(int64_t *p, size_t n)
         test(rsi, rsi)
-        jz("done")                # or a name, bound with a.label("done")
-        loop.here()
+        jz("done")
+        label("loop")
         add(rax, qword[rdi])
         add(rdi, 8)
         dec(rsi)
-        jnz(loop)
-        a.label("done")
+        jnz("loop")
+        label("done")
         ret()
     return a
 
@@ -60,25 +59,24 @@ with build().load() as mod:
 | memory | `qword[rbx + rcx*8 + 8]` | `qword [rbx+rcx*8+8]` |
 | size from the other operand | `ptr[rbx]`, `mov(rax, ptr[rbx])` | `[rbx]` |
 | rip-relative | `qword[rip + lbl]`, `lea(rax, ptr[rip + lbl])` | `[->lbl]` |
-| label | `lbl = Label()`, `lbl.here()`, `a.label("name")` | `1:`, `->name:` |
-| label by name | `jz("done")`, `qword[rip + "tbl"]`, `a.qword("tbl")`, then `a.label("done")` | `->done`, `->tbl` |
-| indexed (pc) labels | `a.pc[i]`, `a.pc[i].here()` | `=>i` |
+| label | `label("done")`, referenced as `jz("done")`, `qword[rip + "tbl"]`, `a.qword("tbl")` | `->done:`, `->done`, `[->tbl]` |
+| label object | `lbl = Label()`, `label(lbl)`, `jz(lbl)` | `1:`, `<1`, `>1` |
+| indexed (pc) labels | `a.pc[i]`, `label(a.pc[i])` | `=>i` |
 | external symbol | `Extern("strlen")`, address given to `load(externs=...)` | `extern strlen` |
 | sections | `with a.section("data"): ...`, `a.section("vars", writable=True)` | `.section` |
 | data | `a.byte() a.word() a.dword() a.qword(1, lbl, ext) a.bytes(b"..") a.align(16) a.space(n)` | `.byte .dword .qword .align` |
 | short branch | `jmp.short(lbl)`, `jz.short(lbl)` | automatic |
 | keyword mnemonics | `and_ or_ not_ int_` | `and or not int` |
-| methods instead of the context | `a.mov(rax, 1)`, `a.jmp.short(lbl)` | |
+| methods instead of the context | `a.mov(rax, 1)`, `a.label("x")`, `a.jmp.short(lbl)` | |
 
 Macros are plain Python functions that emit instructions, and `.if` is a
-Python `if` in the generator. Wherever a Label is accepted a string names
-a label of the assembler, so `jz("done")` can come before `a.label("done")`
-and the same name always means the same label. Use `Label()` objects for
-labels inside macros, so that calling the macro twice does not clash.
-Named labels become symbols of the loaded module
-(`mod.function(..., entry="name")`, `mod.address("name")`), and a Label or
-Extern used as a `mov r64` immediate or a `qword` value becomes a 64 bit
-absolute address. `jita.tools.listing.listing(a)` prints the
+Python `if` in the generator. `label("name")` defines a label, and the
+same string anywhere a label is accepted refers to it, before or after the
+definition. Inside a macro use `Label()` objects instead, so that calling
+the macro twice does not define the same name twice. Named labels become
+symbols of the loaded module (`mod.function(..., entry="name")`,
+`mod.address("name")`), and a Label or Extern used as a `mov r64`
+immediate or a `qword` value becomes a 64 bit absolute address. `jita.tools.listing.listing(a)` prints the
 generated code one instruction per line with its bytes and relocations.
 
 Loaded code is read-execute, and so are sections by default. Data you want

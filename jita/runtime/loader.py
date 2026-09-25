@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ..core.errors import LoadError
-from ..core.label import Label
+from ..core.labels import Label
 from ..core.link import Image, layout, link
 from .memory import ExecMemory
 

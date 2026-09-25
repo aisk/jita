@@ -49,13 +49,13 @@ def gen_reduce(a: Assembler, op: str, clamp: int | None = None, unroll: int = 1)
             mov(rax, INT64_MIN)  # does not fit in int32, so this is a movabs
         test(rsi, rsi)
         jz.short(done)
-        loop.here()
+        label(loop)
         for i in range(unroll):
             combine(op, rax, qword[rdi + 8 * i])
         add(rdi, 8 * unroll)
         sub(rsi, unroll)
         jnz.short(loop)
-        done.here()
+        label(done)
         if clamp is not None:
             mov(rcx, clamp)
             cmp(rax, rcx)

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
 from .errors import LinkError
-from .label import Extern, Label, _bind_seq
+from .labels import Extern, Label, _bind_seq
 
 if TYPE_CHECKING:
     from .assembler import Assembler

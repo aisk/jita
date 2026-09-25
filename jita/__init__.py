@@ -11,6 +11,7 @@ from .core import (
     LoadError,
     PcLabels,
     current,
+    label,
 )
 from .runtime import Module
 
@@ -26,4 +27,5 @@ __all__ = [
     "Module",
     "PcLabels",
     "current",
+    "label",
 ]

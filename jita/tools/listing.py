@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..core.label import Label
+from ..core.labels import Label
 
 if TYPE_CHECKING:
     from ..core.assembler import Assembler

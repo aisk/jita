@@ -47,29 +47,29 @@ def build() -> Assembler:
         xor(eax, eax)
         dispatch()
 
-        a.pc[HALT].here()
+        label(a.pc[HALT])
         ret()
 
-        a.pc[SET].here()
+        label(a.pc[SET])
         mov(rax, rdx)
         dispatch()
 
-        a.pc[ADD].here()
+        label(a.pc[ADD])
         add(rax, rdx)
         dispatch()
 
-        a.pc[SUB].here()
+        label(a.pc[SUB])
         sub(rax, rdx)
         dispatch()
 
-        a.pc[MUL].here()
+        label(a.pc[MUL])
         imul(rax, rdx)
         dispatch()
 
         # The table: one absolute 64 bit handler address per opcode.
         with a.section("data"):
             a.align(8)
-            table.here()
+            label(table)
             a.qword(*(a.pc[op] for op in range(len(NAMES))))
     return a
 

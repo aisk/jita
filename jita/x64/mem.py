@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from ..core.errors import EncodeError
-from ..core.label import Label
+from ..core.labels import Label
 from ..core.operand import Operand
 from .regs import Reg, rip
 

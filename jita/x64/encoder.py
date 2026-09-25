@@ -64,7 +64,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..core.errors import EncodeError
-from ..core.label import Extern, Label
+from ..core.labels import Extern, Label
 from ..core.operand import Hole, Imm
 from ..core.patch import ABS64, REL8, REL32, PatchKind
 from .mem import MemExpr

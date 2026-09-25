@@ -17,9 +17,9 @@ _bind_seq = itertools.count(1)
 class Label:
     """A position in a section. Hashable by identity, never by name.
 
-    Named labels become exported symbols of the linked image. A label with
-    an `owner` binds into that assembler on `here()`; without one, `here()`
-    uses the context-current assembler.
+    Named labels become exported symbols of the linked image. A label is
+    defined with `label(lbl)` inside an assembler context or `a.label(lbl)`.
+    A label with an `owner` can only be bound into that assembler.
     """
 
     __slots__ = ("name", "section", "offset", "owner", "_pc", "_seq")
@@ -35,15 +35,6 @@ class Label:
     @property
     def bound(self) -> bool:
         return self.section is not None
-
-    def here(self) -> Label:
-        """Bind at the current position of the owner assembler, or of the
-        current assembler if the label has no owner."""
-        if self.owner is not None:
-            return self.owner.bind(self)
-        from .assembler import current
-
-        return current().bind(self)
 
     def __str__(self) -> str:
         if self.name is not None:
@@ -69,7 +60,7 @@ class PcLabels:
 
     `pc[i]` returns the same Label for the same i, creating it on first use.
     `len(pc)` is the max index + 1. Labels created here are owned by
-    `owner`, so `pc[i].here()` binds into it outside a `with` block too.
+    `owner` and are defined with `a.label(a.pc[i])`.
     """
 
     __slots__ = ("_labels", "owner")

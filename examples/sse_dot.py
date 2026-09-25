@@ -23,7 +23,7 @@ def build() -> Assembler:
         shr(rcx, 1)  # rcx = n / 2 pairs
         jz(tail)
 
-        pairs.here()
+        label(pairs)
         movupd(xmm1, oword[rdi])  # unaligned loads: no alignment demands
         movupd(xmm2, oword[rsi])
         mulpd(xmm1, xmm2)
@@ -34,14 +34,14 @@ def build() -> Assembler:
         jnz(pairs)
 
         # Horizontal add: xmm0.lo += xmm0.hi
-        tail.here()
+        label(tail)
         movapd(xmm1, xmm0)
         unpckhpd(xmm1, xmm1)
         addsd(xmm0, xmm1)
 
         and_(edx, 1)  # n % 2 elements left (0 or 1)
         jz(done)
-        tail_loop.here()
+        label(tail_loop)
         movsd(xmm1, qword[rdi])
         mulsd(xmm1, qword[rsi])
         addsd(xmm0, xmm1)
@@ -50,7 +50,7 @@ def build() -> Assembler:
         dec(edx)
         jnz(tail_loop)
 
-        done.here()
+        label(done)
         ret()  # result in xmm0
     return a
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
-from .label import Extern, Label, PcLabels, _bind_seq
+from .labels import Extern, Label, PcLabels, _bind_seq
 from .operand import Hole
 from .patch import ABS_BY_SIZE, Patch, PatchKind
 from .section import Section
@@ -30,6 +30,11 @@ def current() -> Assembler:
     if asm is None:
         raise JitaError("no active Assembler")
     return asm
+
+
+def label(target: str | Label | None = None) -> Label:
+    """Define a label in the current assembler, see `Assembler.label`."""
+    return current().label(target)
 
 
 def _host_arch() -> Arch:
@@ -176,7 +181,7 @@ class Assembler:
                 self._named[label.name] = forward
                 raise LinkError(
                     f"label {label.name!r} is already referenced by name, "
-                    f"bind it with a.label({label.name!r}) or a.named({label.name!r}).here()"
+                    f"define it with label({label.name!r})"
                 )
             self._symbols[label.name] = label
         label.section, label.offset = self.cur, self.cur.pos()
@@ -184,19 +189,23 @@ class Assembler:
         self.labels.append(label)
         return label
 
-    def label(self, name: str | None = None) -> Label:
-        """Create a label and bind it here. A name that was referenced
-        earlier as a string binds that forward reference."""
-        if name is not None and name in self._named:
-            return self.bind(self._named[name])
-        return self.bind(Label(name, owner=self))
+    def label(self, target: str | Label | None = None) -> Label:
+        """Define a label at the current position, the `name:` line of an
+        assembly file. `target` is a Label object, the name of a label (one
+        referenced earlier as a string binds that same label) or None for a
+        new anonymous label. Returns the bound label."""
+        if target is None:
+            return self.bind(Label(owner=self))
+        if isinstance(target, Label):
+            return self.bind(target)
+        return self.bind(self.named(target))
 
     def named(self, name: str) -> Label:
         """The label called `name`, created unbound if it does not exist yet.
 
         This is what a string operand means: `jz("done")` is
-        `jz(a.named("done"))`. The label is bound later by `a.label("done")`
-        or `a.named("done").here()`. Linking fails if it never is.
+        `jz(a.named("done"))`. The label is bound later by `label("done")`.
+        Linking fails if it never is.
         """
         if not isinstance(name, str) or not name:
             raise TypeError(f"label name must be a non-empty str, got {name!r}")

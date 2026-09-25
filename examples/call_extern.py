@@ -43,7 +43,7 @@ def build() -> Assembler:
 
         with a.section("data"):
             a.align(8)
-            slot.here()
+            label(slot)
             a.qword(STRLEN)
     return a
 

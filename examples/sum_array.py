@@ -4,7 +4,7 @@ Shows the basic DynASM workflow in jita:
 
 - an Assembler used as a context manager, so the module level mnemonic
   functions (`mov`, `add`, ...) emit into it,
-- labels bound with `.here()` for a loop,
+- labels defined with `label("name")` and referenced by name,
 - a macro, which is just a Python function that emits instructions,
 - loading the code and calling it through ctypes.
 
@@ -13,7 +13,7 @@ Run with `uv run python examples/sum_array.py`.
 
 import ctypes
 
-from jita import Assembler, Label
+from jita import Assembler
 from jita.x64 import *  # noqa: F403  registers, size prefixes, mnemonics
 
 
@@ -27,18 +27,17 @@ def build() -> Assembler:
     # int64_t sum(const int64_t *p /* rdi */, size_t n /* rsi */)
     a = Assembler()
     with a:
-        loop, done = Label(), Label()
         xor(eax, eax)  # acc = 0 (writing eax clears the upper half of rax)
         test(rsi, rsi)
-        jz(done)  # n == 0: nothing to do
+        jz("done")  # n == 0: nothing to do, forward reference by name
 
-        loop.here()
+        label("loop")
         load_next(rcx, rdi)
         add(rax, rcx)
         dec(rsi)
-        jnz(loop)  # backward jump, rel32 unless you ask for .short
+        jnz("loop")  # backward jump, rel32 unless you ask for .short
 
-        done.here()
+        label("done")
         ret()
     return a
 

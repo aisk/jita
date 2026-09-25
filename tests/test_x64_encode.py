@@ -928,7 +928,7 @@ def test_exec_rip_relative_with_immediates():
         mov(rax, qword[rip + d])
         ret()
         with a.section("data", writable=True):
-            d.here()
+            label(d)
             a.qword(0)
     with a.load() as mod:
         assert mod.function(ctypes.c_uint64)() == 0x01DE9ABC12345678
@@ -996,8 +996,8 @@ def test_string_label_matches_object_label_bytes():
     with b:
         end, k = Label("end"), Label("k")
         jz(end); add(rax, qword[rip + k]); jmp.short(end)
-        k.here(); b.qword(0)
-        end.here(); ret()
+        label(k); b.qword(0)
+        label(end); ret()
     assert a.link().data == b.link().data
 
 
