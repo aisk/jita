@@ -65,6 +65,8 @@ __all__ = [
     "aarch64_available",
     "aarch64_assembler",
     "requires_aarch64_oracle",
+    "aarch64_disassemble",
+    "requires_aarch64_disassembler",
 ]
 
 
@@ -162,14 +164,31 @@ def assemble(text: str, arch: str = "x64") -> bytes:
 # assembler (llvm-mc), which is often present as part of clang.
 
 
+def _llvm_version(path: str) -> int:
+    m = re.search(r"/llvm-(\d+)/", path)
+    return int(m.group(1)) if m else -1
+
+
+def _runs(path: str) -> bool:
+    """True if `path --version` runs successfully."""
+    try:
+        return subprocess.run([path, "--version"], capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+_llvm_tools: dict[str, str | None] = {}
+
+
 def _llvm_tool(name: str) -> str | None:
-    found = shutil.which(name)
-    if found:
-        return found
-    for path in sorted(glob.glob(f"/usr/lib/llvm-*/bin/{name}"), reverse=True):
-        if os.access(path, os.X_OK):
-            return path
-    return None
+    """`name` on PATH, else the newest /usr/lib/llvm-N/bin/`name`, if it runs."""
+    if name in _llvm_tools:
+        return _llvm_tools[name]
+    candidates = [shutil.which(name)] if shutil.which(name) else []
+    candidates += sorted(glob.glob(f"/usr/lib/llvm-*/bin/{name}"), key=_llvm_version, reverse=True)
+    found = next((p for p in candidates if os.access(p, os.X_OK) and _runs(p)), None)
+    _llvm_tools[name] = found
+    return found
 
 
 def aarch64_assembler() -> tuple[str, list[str], str] | None:
@@ -190,6 +209,42 @@ def aarch64_available() -> bool:
 
 requires_aarch64_oracle = pytest.mark.skipif(
     not aarch64_available(), reason="no aarch64 assembler (aarch64-linux-gnu-as or llvm-mc)"
+)
+
+def aarch64_disassemble(code: bytes) -> list[str]:
+    """Disassemble aarch64 machine code with llvm-mc, one line per word,
+    whitespace collapsed (`add x0, x1, #1`). A word that does not decode
+    gives `<invalid>`."""
+    mc = _llvm_tool("llvm-mc")
+    if mc is None:
+        raise OracleError("llvm-mc not available")
+    if len(code) % 4:
+        raise ValueError("aarch64 code must be a multiple of 4 bytes")
+
+    def run(chunk: bytes) -> list[str]:
+        r = subprocess.run(
+            [mc, "--disassemble", "-triple=aarch64", "-mattr=+v8.5a"],
+            input=" ".join(f"0x{b:02x}" for b in chunk),
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            return []
+        return [
+            re.sub(r"\s+", " ", ln.strip())
+            for ln in r.stdout.splitlines()
+            if ln.strip() and not ln.strip().startswith(".")
+        ]
+
+    lines = run(code)
+    if len(lines) == len(code) // 4:
+        return lines
+    # Some word did not decode: go one word at a time to keep positions.
+    return [(run(code[i : i + 4]) or ["<invalid>"])[0] for i in range(0, len(code), 4)]
+
+
+requires_aarch64_disassembler = pytest.mark.skipif(
+    _llvm_tool("llvm-mc") is None, reason="llvm-mc not available"
 )
 
 _aarch64_cache: dict[str, bytes] = {}
