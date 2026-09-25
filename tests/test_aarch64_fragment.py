@@ -11,7 +11,7 @@ import pytest
 from oracle import aarch64_disassemble, requires_aarch64_disassembler
 
 import jita.aarch64 as A
-from jita import Assembler, EncodeError, Extern, Fragment, Hole, Label, label
+from jita import Assembler, EncodeError, Extern, Fragment, Hole, Label, LinkError, label
 from jita.aarch64 import *  # noqa: F403
 from jita.aarch64.patch import REL19, REL26, RegField
 from jita.tools.listing import listing
@@ -368,3 +368,30 @@ def test_non_int_shift_amounts(amount):
 def test_radd():
     assert str(mem[8 + x0]) == str(mem[x0 + 8]) == "[x0, #8]"  # noqa: F405
     assert str(mem[8 + (x0 + 8)]) == "[x0, #16]"  # noqa: F405
+
+
+# -- extern pointer slots --------------------------------------------------------
+
+
+def test_far_extern_through_slot():
+    # bl/b reach +-128MB and ldr(x, ext) loads from the extern's address;
+    # a far function is called through its pointer slot.
+    far = 0x7F12_3456_7890
+    ext = Extern("far_fn")
+    a = Assembler(A)
+    with a:
+        ldr(x16, a.extern_slot(ext))  # noqa: F405
+        blr(x16)  # noqa: F405
+        ret()  # noqa: F405
+    img = a.link(base=0x10000, externs={"far_fn": far})
+    slot = img.section_offsets["externs"]
+    word = int.from_bytes(img.data[:4], "little")
+    assert word & 0xFF00001F == 0x58000010  # ldr x16, literal
+    assert ((word >> 5) & 0x7FFFF) * 4 == slot  # the literal is the slot
+    assert int.from_bytes(img.data[slot : slot + 8], "little") == far
+    assert img.data[4:12].hex() == "00023fd6" "c0035fd6"  # blr x16; ret
+    assert a.extern_slot(Extern("far_fn")) is a.extern_slots["far_fn"]
+    near = Assembler(A)
+    bl(ext, asm=near)  # noqa: F405
+    with pytest.raises(LinkError, match="out of range"):
+        near.link(base=0x10000, externs={"far_fn": far})

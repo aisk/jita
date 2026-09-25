@@ -139,7 +139,7 @@ len(frag)                     # 23: every instance has the same length
 ```
 
 Holes are typed: `Hole.gp8/gp16/gp32/gp64`, `Hole.xmm`, `Hole.ymm` for
-registers, `Hole.imm8/imm16/imm32/imm64` for immediates and `Hole.label`
+registers (`Hole.fp32/fp64` on aarch64, see below), `Hole.imm8/imm16/imm32/imm64` for immediates and `Hole.label`
 for anything a Label is accepted as (branch targets, `[rip + l]`,
 `mov r64, l`, data directives). gp64 holes also work as the base or index
 of a memory operand. The value for each hole is passed by name to
@@ -212,8 +212,8 @@ In a fragment, gp64 register holes work as the base and as an array index:
 ## aarch64
 
 `jita.aarch64` works like `jita.x64`. `Assembler()` picks it on an aarch64
-host; `Assembler(jita.aarch64)` generates aarch64 code anywhere, for
-example to print a listing.
+host; `Assembler(jita.aarch64)` or `Assembler("aarch64")` generates
+aarch64 code anywhere, for example to print a listing.
 
 ```python
 from jita import Assembler
@@ -271,9 +271,11 @@ every size with all addressing modes, load/store pair, branches
 `bti`, pointer authentication branches, `nop`, `brk`, and scalar
 single/double floating point (arithmetic, `fmadd` family, conversions,
 rounding, compares, `fcsel`, `fmov` with immediates). SIMD, atomics,
-system instructions and barriers are not in the table. `mov` accepts the
-immediates that `movz` or a logical immediate can encode; build other
-constants with `movz`/`movk`.
+system instructions and barriers are not in the table. `mov` takes a
+register, an unshifted 16 bit immediate (encoded as `movz`) or a logical
+immediate (encoded as `orr`); it never picks a shifted `movz` or a
+`movn`, so build other constants with `movz`, `movn` and `movk` and their
+`lsl=` keyword (`movz(x0, 0x1234, lsl=16)`).
 
 jita checks operands more strictly than a plain field encoder: register
 31 is only accepted as `sp` where the instruction means the stack
@@ -282,7 +284,25 @@ shift amounts and bit positions above 31, bitfield aliases check lsb and
 width, the `cset`/`cinc` family rejects `al`, and loads that write back
 into a register they also load are errors. Branches to labels are linked
 with `target - instruction address`; `adrp` uses the 4KB page
-difference.
+difference. Since there is no `:lo12:` operand to add the low 12 bits
+back, `adrp` to a label is only useful when the label is page aligned.
+
+An `Extern` is a valid target of `b`, `bl`, `adr` and `ldr` literal
+loads, which reach +-128MB (`b`, `bl`) or +-1MB (`adr`, `ldr`); `ldr(x0,
+ext)` loads from the extern's address. To call a function at any
+distance, load its address from the extern's pointer slot, an 8 byte
+slot in the `externs` section as on x64:
+`ldr(x16, a.extern_slot(ext)); blr(x16)`.
+
+Fragments work on aarch64 too. Register holes are `Hole.gp64`,
+`Hole.gp32`, `Hole.fp32` and `Hole.fp64`, usable in any register
+operand, as a memory base (`mem[src + 8]`, `mem.pre[src - 16]`) and as a
+plain 64 bit index (`mem[x0 + idx]`). A general purpose hole cannot be
+filled with register 31 (`sp`, `xzr`, `wzr`), because whether 31 means
+the stack pointer or zero depends on where the register sits. Label holes
+work as on x64. Immediate holes are not supported in aarch64
+instructions (data directives still take them), and a hole cannot carry a
+shift or an extend.
 
 ## Status
 
