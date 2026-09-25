@@ -373,6 +373,62 @@ def test_alignment():
         inner.instantiate(b)
 
 
+def test_nested_fragment_inherits_alignment():
+    inner = Fragment(x64, align=16)
+    with inner:
+        ret()  # noqa: F405
+    outer = Fragment(x64)
+    with outer:
+        inner.instantiate()
+    assert outer.alignment == 16
+    a = Assembler(x64)
+    a.bytes(b"\x90" * 8)
+    with pytest.raises(LinkError, match="aligned to 16"):
+        outer.instantiate(a)
+
+    # align() padding inside the inner fragment stays where it belongs: the
+    # outer fragment needs the same alignment, so the padded instruction is
+    # aligned in the final code too.
+    padded = Fragment(x64)
+    with padded:
+        nop()  # noqa: F405
+        padded.align(8)
+        label("aligned")
+        ret()  # noqa: F405
+    outer = Fragment(x64)
+    with outer:
+        first = padded.instantiate()
+        outer.align(8)
+        second = padded.instantiate()
+    assert [i.labels["aligned"].offset for i in (first, second)] == [8, 24]
+    assert outer.alignment == 8
+    b = Assembler(x64)
+    b.bytes(b"\xcc" * 4)
+    with pytest.raises(LinkError):
+        outer.instantiate(b)
+    b.align(8)
+    outer.instantiate(b)
+    rets = [i for i, x in enumerate(b.cur.buf) if x == 0xC3]
+    assert rets == [16, 32]
+
+
+def test_instance_end_is_fixed_at_instantiation():
+    frag = frag_of(lambda: push(D))  # noqa: F405
+    a = Assembler(x64)
+    inst = frag.instantiate(a, d=rbx)  # noqa: F405
+    with frag:
+        pop(D)  # noqa: F405
+    assert (inst.start, inst.end) == (0, 2)
+    assert frag.instantiate(a, d=rbx).end == 6  # noqa: F405
+
+
+def test_extern_slot_method_is_rejected_in_a_fragment():
+    frag = Fragment(x64)
+    with pytest.raises(JitaError, match=r"qword\[rip \+ ext\]"):
+        frag.extern_slot(Extern("strlen"))
+    assert list(frag.sections) == ["code"] and frag.extern_slots == {}
+
+
 # -- listing -----------------------------------------------------------------
 
 

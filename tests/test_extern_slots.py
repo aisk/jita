@@ -115,8 +115,21 @@ def test_slot_kind_requires_an_extern():
 
 def test_memory_operand_text():
     assert str(qword[rip + STRLEN]) == "qword ptr [rip+strlen]"
-    assert str(ptr[rip + STRLEN + 8]) == "[rip+strlen+8]"
     assert qword[rip + STRLEN].label is STRLEN
+
+
+def test_extern_operand_has_no_displacement():
+    # The operand addresses the slot; slot+8 would be the next slot or past
+    # the end, never a part of the extern.
+    for build_op in (
+        lambda: qword[rip + STRLEN + 8],
+        lambda: qword[rip + 8 + STRLEN],
+        lambda: ptr[rip + STRLEN - 4],
+        lambda: typed(rip + STRLEN, ctypes.c_int64 * 2)[1],
+    ):
+        with pytest.raises(EncodeError, match="pointer slot"):
+            build_op()
+    assert typed(rip + STRLEN, ctypes.c_int64 * 2)[0] == qword[rip + STRLEN]
 
 
 def test_extern_needs_rip_base():
@@ -129,7 +142,7 @@ def test_extern_needs_rip_base():
 
 
 def test_link_resolves_slot():
-    a = build(lambda e: call(qword[rip + e]), lambda e: mov(rax, qword[rip + e + 8]))
+    a = build(lambda e: call(qword[rip + e]), lambda e: mov(rax, qword[rip + e]))
     img = a.link(0x10000, {"strlen": 0x7F0012345678})
     ext = img.section_offsets["externs"]
     assert img.data[ext : ext + 8] == (0x7F0012345678).to_bytes(8, "little")
@@ -137,7 +150,7 @@ def test_link_resolves_slot():
     assert slot == 0x10000 + ext
     # call qword [rip+rel]: rip is the end of the 6 byte instruction.
     assert int.from_bytes(img.data[2:6], "little", signed=True) == slot - (0x10000 + 6)
-    assert int.from_bytes(img.data[9:13], "little", signed=True) == slot + 8 - (0x10000 + 13)
+    assert int.from_bytes(img.data[9:13], "little", signed=True) == slot - (0x10000 + 13)
 
 
 def test_far_extern_links_through_slot_but_not_direct():

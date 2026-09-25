@@ -30,17 +30,16 @@ class Instance:
     instance: named ones by name, anonymous ones by the original Label
     object. Label holes map from the Hole to the Label they were given.
     `values` holds the hole values by name (label names resolved to Labels).
+    `start` and `end` delimit the instance's bytes in `section`; `end` does
+    not change if more code is added to the fragment afterwards.
     """
 
     fragment: Fragment
     section: Section
     start: int
+    end: int
     labels: dict[str | Hole | Label, Label] = field(default_factory=dict)
     values: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def end(self) -> int:
-        return self.start + len(self.fragment)
 
 
 class _Plan:
@@ -136,6 +135,14 @@ class Fragment(Assembler):
             sec.buf += bytes(kind.size)
             return
         super().emit_patch(kind, target, addend)
+
+    def extern_slot(self, extern: Extern) -> Label:
+        # A fragment has no sections of its own to hold slots, and a slot
+        # label would not survive instantiation.
+        raise JitaError(
+            "a Fragment has no extern pointer slots; use qword[rip + ext] in its code, "
+            "the assembler it is instantiated into creates the slot"
+        )
 
     def align(self, n: int, fill: bytes | None = None) -> None:
         super().align(n, fill)
@@ -253,6 +260,10 @@ class Fragment(Assembler):
         # emit_patch, in offset order.
         sec = asm.cur
         sec.align = max(sec.align, self.alignment)
+        if isinstance(asm, Fragment):
+            # The instance is aligned relative to the outer fragment's start,
+            # so the outer fragment inherits the requirement.
+            asm.alignment = max(asm.alignment, self.alignment)
         pos = 0
         for off, order, item in plan.events:
             if off > pos:
@@ -289,4 +300,4 @@ class Fragment(Assembler):
             if h.kind == "label":
                 labels[h] = v
         named = {n: vals[h] for n, h in self.holes.items() if n in values}
-        return Instance(self, sec, start, labels, named)
+        return Instance(self, sec, start, start + len(buf), labels, named)

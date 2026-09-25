@@ -28,7 +28,7 @@ class MemExpr(Operand):
 
     A `label` that is an Extern refers to the extern's pointer slot
     (`Assembler.extern_slot`), so `call(qword[rip + ext])` is an indirect
-    call through the slot.
+    call through the slot. Such an operand cannot have a displacement.
 
     `size` is the access width in bytes, None when untyped (`ptr[...]`).
     Instances are normalized and validated on construction.
@@ -82,6 +82,13 @@ class MemExpr(Operand):
             raise EncodeError("rip-relative operands cannot have an index")
         if self.label is not None and base is not rip:
             raise EncodeError("labels are only allowed as rip-relative operands: [rip + label]")
+        if isinstance(self.label, Extern) and self.disp:
+            # The operand addresses the extern's pointer slot, so an offset
+            # would point past the slot rather than into the extern.
+            raise EncodeError(
+                f"[rip + {self.label.name}] addresses the extern's 8 byte pointer slot, "
+                "it cannot have a displacement"
+            )
         disp = self.disp
         if not isinstance(disp, int) or isinstance(disp, bool):
             raise EncodeError(f"displacement {disp!r} is not an int")
