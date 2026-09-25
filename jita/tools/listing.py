@@ -13,11 +13,16 @@ if TYPE_CHECKING:
 
 
 class _Names:
-    """Label names for one listing. Anonymous labels are numbered .L1, .L2,
-    ... in bind order, so the output does not depend on object ids."""
+    """Label names for one listing. Extern pointer slots are shown as
+    `name@slot`; other anonymous labels are numbered .L1, .L2, ... in bind
+    order, so the output does not depend on object ids."""
 
-    def __init__(self, labels: list[Label]):
+    def __init__(self, labels: list[Label], slots: dict[str, Label] | None = None):
         self._anon: dict[int, str] = {}
+        self._slots = 0
+        for name, lbl in (slots or {}).items():
+            self._anon[id(lbl)] = f"{name}@slot"
+            self._slots += 1
         for lbl in labels:
             self(lbl)
 
@@ -26,7 +31,7 @@ class _Names:
             return str(target)
         name = self._anon.get(id(target))
         if name is None:
-            name = self._anon[id(target)] = f".L{len(self._anon) + 1}"
+            name = self._anon[id(target)] = f".L{len(self._anon) - self._slots + 1}"
         return name
 
     def operand(self, op: Any) -> str:
@@ -54,7 +59,7 @@ def listing(asm: Assembler, image: Image | None = None, width: int = 8) -> str:
     Instructions are printed one per line with their operands and patches.
     Data is printed `width` bytes per row. Instructions longer than `width`
     bytes continue on the following rows."""
-    names = _Names(asm.labels)
+    names = _Names(asm.labels, getattr(asm, "extern_slots", None))
     labels: dict[int, dict[int, list[Label]]] = {}
     for lbl in asm.labels:
         labels.setdefault(id(lbl.section), {}).setdefault(lbl.offset, []).append(lbl)

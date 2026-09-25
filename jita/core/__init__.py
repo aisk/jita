@@ -5,7 +5,7 @@ from .fragment import Fragment, Instance
 from .labels import Extern, Label, PcLabels
 from .link import Image, link
 from .operand import Hole, Imm, Operand, Register
-from .patch import ABS8, ABS16, ABS32, ABS64, REL8, REL32, Patch, PatchKind
+from .patch import ABS8, ABS16, ABS32, ABS64, REL8, REL32, SLOT_REL32, Patch, PatchKind, SlotKind
 from .section import Section
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "ABS64",
     "REL8",
     "REL32",
+    "SLOT_REL32",
     "Arch",
     "Assembler",
     "EncodeError",
@@ -34,6 +35,7 @@ __all__ = [
     "PcLabels",
     "Register",
     "Section",
+    "SlotKind",
     "current",
     "label",
     "link",

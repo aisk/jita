@@ -11,7 +11,7 @@ from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
 from .labels import Extern, Label, PcLabels, _bind_seq
 from .operand import Hole
-from .patch import ABS_BY_SIZE, Patch, PatchKind, imm_kind
+from .patch import ABS64, ABS_BY_SIZE, Patch, PatchKind, SlotKind, imm_kind
 from .section import Section
 
 if TYPE_CHECKING:
@@ -100,6 +100,7 @@ class Assembler:
         self.labels: list[Label] = []  # bound labels, in bind order
         self._symbols: dict[str, Label] = {}
         self._named: dict[str, Label] = {}  # referenced by name, not bound yet
+        self.extern_slots: dict[str, Label] = {}  # extern name -> pointer slot
 
     def __repr__(self) -> str:
         return f"<Assembler {self.arch.name} [{', '.join(self.sections)}]>"
@@ -152,11 +153,19 @@ class Assembler:
         self.cur.buf += data
 
     def emit_patch(self, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
-        """Reserve kind.size zero bytes at pos and record the Patch."""
+        """Reserve kind.size zero bytes at pos and record the Patch.
+
+        A `SlotKind` patch to an Extern (`qword[rip + ext]`) is recorded as
+        `kind.field` to the extern's pointer slot, see `extern_slot`.
+        """
         if not isinstance(target, (Label, Extern, Hole)):
             raise TypeError(f"patch target must be a Label, Extern or Hole, got {target!r}")
         if isinstance(target, Hole):
             self.accept_hole(target)
+        if isinstance(kind, SlotKind):
+            if not isinstance(target, Extern):
+                raise TypeError(f"{kind.name} patch target must be an Extern, got {target!r}")
+            kind, target = kind.field, self.extern_slot(target)
         sec = self.cur
         sec.patches.append(Patch(sec.pos(), kind, target, addend))
         sec.buf += bytes(kind.size)
@@ -182,6 +191,35 @@ class Assembler:
         instruction per line."""
         sec = self.cur
         sec.insns.append((start, sec.pos(), mnemonic, tuple(ops)))
+
+    def extern_slot(self, extern: Extern) -> Label:
+        """The label of an 8 byte slot holding `extern`'s address.
+
+        The first request for a name appends `qword(extern)` (an ABS64
+        patch) to the read-only `externs` section, creating it with
+        alignment 8 if needed. Later requests for the same name return the
+        same label, so there is one slot per name per assembler; the slot's
+        address comes from the first Extern object seen for that name
+        (`externs` given to `link`/`load` override it as usual).
+        """
+        if not isinstance(extern, Extern):
+            raise TypeError(f"extern_slot expects an Extern, got {extern!r}")
+        slot = self.extern_slots.get(extern.name)
+        if slot is not None:
+            return slot
+        sec = self.sections.get("externs")
+        if sec is None:
+            sec = self.sections["externs"] = Section("externs", align=8)
+        prev, self.cur = self.cur, sec
+        try:
+            if pad := -sec.pos() % 8:
+                self.emit(bytes(pad))
+            slot = self.bind(Label(owner=self))
+            self.emit_patch(ABS64, extern)
+        finally:
+            self.cur = prev
+        self.extern_slots[extern.name] = slot
+        return slot
 
     # labels
 

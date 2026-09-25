@@ -12,7 +12,11 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 EXPECTED = {
     "sum_array.py": ["sum(1..100) = 5050"],
     "dispatch_table.py": ["result = -68"],
-    "call_extern.py": ["strlen via register: 15", "strlen via slot: 15"],
+    "call_extern.py": [
+        "strlen via register: 15",
+        "strlen via extern slot: 15",
+        "strlen via slot: 15",
+    ],
     "sse_dot.py": ["dot = 220.0"],
     "fragments.py": ["poly(10) + 6 + 300 = 3163", "jnz.short .L3", "add r10, qword ptr [rcx+r8*8-8]"],
     "conditional_codegen.py": [

@@ -138,6 +138,30 @@ REL32 = RelKind("rel32", 4)
 
 ABS_BY_SIZE = {1: ABS8, 2: ABS16, 4: ABS32, 8: ABS64}
 
+
+class SlotKind(PatchKind):
+    """A reference to the pointer slot of an Extern, not to the extern.
+
+    Encoders emit it for memory operands such as `qword[rip + ext]`.
+    `Assembler.emit_patch` never records it: it replaces the Extern target
+    with the assembler's slot label (`Assembler.extern_slot`) and the kind
+    with `field`, the kind that actually writes the reference. So
+    `call(ext)` stays a direct REL32 to the extern while `call(qword[rip +
+    ext])` becomes a REL32 to an 8 byte slot holding its address.
+    """
+
+    __slots__ = ("field",)
+
+    def __init__(self, field: PatchKind):
+        super().__init__(f"{field.name}@slot", field.size)
+        self.field = field
+
+    def apply(self, buf: bytearray, at: int, target: int, place: int) -> None:
+        raise LinkError(f"{self.name}: extern slot reference was never resolved to a slot")
+
+
+SLOT_REL32 = SlotKind(REL32)
+
 type PatchTarget = Label | Extern | Hole
 
 

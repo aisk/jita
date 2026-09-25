@@ -64,6 +64,7 @@ with build().load() as mod:
 | label object | `lbl = Label()`, `label(lbl)`, `jz(lbl)` | `1:`, `<1`, `>1` |
 | indexed (pc) labels | `a.pc[i]`, `label(a.pc[i])` | `=>i` |
 | external symbol | `Extern("strlen")`, address given to `load(externs=...)` | `extern strlen` |
+| call through a pointer slot | `call(qword[rip + Extern("strlen")])` | |
 | sections | `with a.section("data"): ...`, `a.section("vars", writable=True)` | `.section` |
 | data | `a.byte() a.word() a.dword() a.qword(1, lbl, ext) a.bytes(b"..") a.align(16) a.space(n)` | `.byte .dword .qword .align` |
 | short branch | `jmp.short(lbl)`, `jz.short(lbl)` | automatic |
@@ -88,8 +89,14 @@ it through the module, e.g. `mod.write("counter", (5).to_bytes(8, "little"))`.
 `a.align(n)` pads code with NOPs and data sections with zero bytes.
 
 `call(Extern(...))` is a rel32 call, so loading fails with `LinkError` when
-the target is more than 2GB away from the code. In that case load the
-address into a register first: `mov(rax, Extern("f")); call(rax)`.
+the target is more than 2GB away from the code, which is common for shared
+libraries. The portable form is `call(qword[rip + ext])`: an Extern used as
+a rip-relative memory operand refers to an 8 byte slot holding the extern's
+address. jita creates one slot per extern name in a read-only `externs`
+section, which is laid out next to the code, so the same slot serves
+`call(qword[rip + ext])`, `jmp(qword[rip + ext])` (a tail call),
+`mov(rax, qword[rip + ext])` and `lea(rax, ptr[rip + ext])` (the slot's own
+address). `mov(rax, ext); call(rax)` also works at any distance.
 
 Scalar SSE instructions need an explicitly sized memory operand, e.g.
 `mulsd(xmm0, qword[rip + k])`; `ptr[...]` does not pick the size there.

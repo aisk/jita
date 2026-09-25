@@ -84,7 +84,7 @@ from typing import Any
 from ..core.errors import EncodeError
 from ..core.labels import Extern, Label
 from ..core.operand import Hole, Imm
-from ..core.patch import ABS64, REL8, REL32, PatchKind, bits_kind, imm_kind
+from ..core.patch import ABS64, REL8, REL32, SLOT_REL32, PatchKind, bits_kind, imm_kind
 from .mem import MemExpr
 from .regs import Reg
 from .table import MAP_OP
@@ -469,7 +469,10 @@ class _Encoder:
             # [rip+disp] or [rip+label+addend] -> (0, s, ebp)
             self.putb(self.modrm(0, s, 5))
             if t.label is not None:
-                self.fixup(REL32, t.label, t.disp, riprel=True)
+                # [rip + extern] addresses the extern's pointer slot, which
+                # Assembler.emit_patch creates on first use.
+                kind = SLOT_REL32 if isinstance(t.label, Extern) else REL32
+                self.fixup(kind, t.label, t.disp, riprel=True)
             else:
                 self.putd(t.disp)
             return
