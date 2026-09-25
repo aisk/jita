@@ -14,6 +14,7 @@ from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
+from .typed import typed
 
 # Recommended multi-byte NOP sequences (Intel SDM, NOP instruction).
 _NOPS = (
@@ -56,5 +57,6 @@ class X64Arch(Arch):
 ARCH = X64Arch()
 
 # Keep `from jita.x64 import *` to registers, size prefixes, memory operands,
-# mnemonics and ARCH; helper imports and submodule names are not exported.
-__all__ = ["ARCH", "X64Arch", "label", *_insns.__all__, *_mem.__all__, *_regs.__all__]
+# mnemonics, `typed` and ARCH; helper imports and submodule names are not
+# exported.
+__all__ = ["ARCH", "X64Arch", "label", "typed", *_insns.__all__, *_mem.__all__, *_regs.__all__]

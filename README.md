@@ -22,8 +22,9 @@ uv run python examples/sum_array.py
 
 The `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, calls into libc, an SSE2 dot
-product, code specialized by Python-level parameters and a function
-assembled from fragments with holes.
+product, a linked list of ctypes structures, code specialized by
+Python-level parameters and a function assembled from fragments with
+holes.
 
 ## Example
 
@@ -65,6 +66,7 @@ with build().load() as mod:
 | indexed (pc) labels | `a.pc[i]`, `label(a.pc[i])` | `=>i` |
 | external symbol | `Extern("strlen")`, address given to `load(externs=...)` | `extern strlen` |
 | call through a pointer slot | `call(qword[rip + Extern("strlen")])` | |
+| structure fields | `p = typed(rdi, Point)`, `mov(eax, p.x)`, `p.v[rcx]` | `.type P, Point, rdi`, `P->x` |
 | sections | `with a.section("data"): ...`, `a.section("vars", writable=True)` | `.section` |
 | data | `a.byte() a.word() a.dword() a.qword(1, lbl, ext) a.bytes(b"..") a.align(16) a.space(n)` | `.byte .dword .qword .align` |
 | short branch | `jmp.short(lbl)`, `jz.short(lbl)` | automatic |
@@ -153,6 +155,34 @@ forms are never used. An immediate hole picks the form by its declared
 size, not its value: `add(r, Hole.imm8(..))` is the sign-extended imm8 form
 and `mov(eax, Hole.imm8(..))` is an error. `examples/fragments.py` builds a
 function out of several instances.
+
+## Structures
+
+`typed(base, Type)` views memory as a `ctypes.Structure` or `Union`, so
+generated code and Python share one definition of the layout:
+
+```python
+class Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32), ("tag", ctypes.c_uint8),
+                ("next", ctypes.c_void_p), ("v", ctypes.c_double * 4)]
+
+p = typed(rdi, Point)             # base register, or an address like rdi + 16
+mov(eax, p.x)                     # dword[rdi]
+movzx(eax, p.tag)                 # byte[rdi+8]
+mov(rdi, p.next)                  # qword[rdi+16]
+movsd(xmm0, p.v[1])               # qword[rdi+32]
+movsd(xmm1, p.v[rcx])             # qword[rdi+rcx*8+24]
+lea(rax, p.v.addr)                # [rdi+24], unsized
+```
+
+Scalar fields are sized memory operands (1, 2, 4 or 8 bytes, pointers are
+qwords), nested structures and unions are further views and arrays take a
+constant or a register index. Offsets are the ones ctypes computes, so
+`_pack_`, `_anonymous_` and unions behave as in Python. `p.addr`, `p.size`
+and `p.ctype` give the start address, `ctypes.sizeof` and the type; a field
+that clashes with those names is reached as `p["size"]`. Pointer fields are
+not followed: load the pointer and call `typed` on the register again. Bit
+fields and `c_longdouble` have no memory operand and raise `EncodeError`.
 
 ## Differences from DynASM
 
