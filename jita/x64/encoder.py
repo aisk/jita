@@ -231,7 +231,9 @@ def _classify(op: Any, mnemonic: str, ops: Sequence[Any]) -> _Arg:
         return a
     if isinstance(op, Hole):
         if op.kind == "reg":
-            a.opsize = _REG_OPSIZE[op.regclass, op.size]
+            a.opsize = _REG_OPSIZE.get((op.regclass, op.size))
+            if a.opsize is None:
+                raise _fail(mnemonic, ops, f"unsupported operand {op!r}")
             a.mode, a.reg, a.vreg = "rm", 0, op
             if a.opsize == "b":
                 a.needrex = True

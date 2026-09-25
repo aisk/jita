@@ -941,3 +941,10 @@ def test_exec_extern_slot_inside_fragment():
     with a.load(externs={"strlen": addr}) as mod:
         fn = mod.function(ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p)
         assert fn(b"abc", b"hello") == 8
+
+
+def test_fp_holes_are_not_x64_registers():
+    assert repr(Hole.fp32("p")) == "Hole.fp32('p')"
+    assert repr(Hole.fp64("p")) == "Hole.fp64('p')"
+    with pytest.raises(EncodeError, match="unsupported operand"):
+        frag_of(lambda: add(rax, Hole.fp64("p")))  # noqa: F405

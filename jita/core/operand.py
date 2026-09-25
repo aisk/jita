@@ -77,16 +77,19 @@ class Hole(Operand):
     encoder needs to choose an instruction form:
 
         Hole.gp8(name) .. Hole.gp64(name), Hole.xmm(name), Hole.ymm(name)
+        Hole.fp32(name), Hole.fp64(name)          (aarch64)
         Hole.imm8(name) .. Hole.imm64(name)
         Hole.label(name)
 
     `kind` is "reg", "imm" or "label". Register holes have a `regclass`
-    ("gp", "xmm", "ymm") and a `size` in bytes; immediate holes a `size`.
+    ("gp", "xmm", "ymm", "fp") and a `size` in bytes; immediate holes a
+    `size`.
     `name` is the keyword that supplies the value to
     `Fragment.instantiate`. Holes are hashable by identity.
 
     A gp64 register hole also builds memory operands like a register does:
-    `qword[src + 8]`, `qword[rax + idx*8]`.
+    `qword[src + 8]`, `qword[rax + idx*8]` on x64, `mem[src + 8]` on
+    aarch64.
     """
 
     __slots__ = ("name", "kind", "regclass", "size")
@@ -131,6 +134,16 @@ class Hole(Operand):
         return cls._new(name, "reg", "ymm", 32)
 
     @classmethod
+    def fp32(cls, name: str) -> Hole:
+        """A single precision FP register (aarch64 s0..s31)."""
+        return cls._new(name, "reg", "fp", 4)
+
+    @classmethod
+    def fp64(cls, name: str) -> Hole:
+        """A double precision FP register (aarch64 d0..d31)."""
+        return cls._new(name, "reg", "fp", 8)
+
+    @classmethod
     def imm8(cls, name: str) -> Hole:
         return cls._new(name, "imm", None, 1)
 
@@ -160,7 +173,7 @@ class Hole(Operand):
 
     def __repr__(self) -> str:
         if self.kind == "reg":
-            ctor = f"gp{self.size * 8}" if self.regclass == "gp" else self.regclass
+            ctor = f"{self.regclass}{self.size * 8}" if self.regclass in ("gp", "fp") else self.regclass
         elif self.kind == "imm":
             ctor = f"imm{self.size * 8}"
         else:

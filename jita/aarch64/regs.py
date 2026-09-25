@@ -24,7 +24,7 @@ A register with a shift or an extend is written as an expression:
 from __future__ import annotations
 
 from ..core.errors import EncodeError
-from ..core.operand import Operand, Register
+from ..core.operand import Hole, Operand, Register
 
 SHIFTS = ("lsl", "lsr", "asr")
 EXTENDS = ("uxtb", "uxth", "uxtw", "uxtx", "sxtb", "sxth", "sxtw", "sxtx")
@@ -109,6 +109,20 @@ class Reg(Register):
         from .mem import Addr
 
         return Addr(self) - other
+
+
+# DynASM register type letter of a register hole, by (regclass, size).
+_HOLE_RT = {("gp", 8): "x", ("gp", 4): "w", ("fp", 4): "s", ("fp", 8): "d"}
+
+
+def reg_type(q) -> str | None:
+    """The register type letter (x, w, s, d, q) of a register or register
+    hole, None for anything else."""
+    if isinstance(q, Reg):
+        return q.rt
+    if isinstance(q, Hole) and q.kind == "reg":
+        return _HOLE_RT.get((q.regclass, q.size))
+    return None
 
 
 class Mod(Operand):

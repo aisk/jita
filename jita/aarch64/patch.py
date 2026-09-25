@@ -12,13 +12,15 @@ or misaligned displacements raise LinkError.
     REL21_ADR   adr                         byte offset, lo2 at 29, hi19 at 5
     REL21_ADRP  adrp                        4KB page delta, same layout
 
-Absolute data (`a.qword(label)`) uses the core ABS kinds.
+Absolute data (`a.qword(label)`) uses the core ABS kinds. Register holes
+of a Fragment use `RegField`, a core `BitsKind` for one byte of a 5 bit
+register field.
 """
 
 from __future__ import annotations
 
 from ..core.errors import LinkError
-from ..core.patch import PatchKind
+from ..core.patch import BitsKind, PatchKind
 
 
 def _or_word(buf: bytearray, at: int, bits: int) -> None:
@@ -62,10 +64,35 @@ class AdrKind(PatchKind):
         _or_word(buf, at, ((n & 3) << 29) | (((n >> 2) & 0x7FFFF) << 5))
 
 
+class RegField(BitsKind):
+    """One byte's part of a 5 bit register field, filled from a register
+    hole. General purpose fields forbid 31: whether it means sp or the
+    zero register depends on the position, so holes never take it."""
+
+    __slots__ = ()
+
+    def apply(self, buf: bytearray, at: int, target: int, place: int) -> None:
+        if target == self.forbid:
+            raise LinkError(f"{self.name}: register 31 (sp, xzr or wzr) cannot fill a register hole")
+        super().apply(buf, at, target, place)
+
+
+_reg_fields: dict[tuple, RegField] = {}
+
+
+def reg_field(name: str, shift: int, width: int, take: int, gp: bool) -> RegField:
+    """The (shared) RegField with these parameters."""
+    key = (name, shift, width, take, False, 31 if gp else None)
+    kind = _reg_fields.get(key)
+    if kind is None:
+        kind = _reg_fields[key] = RegField(*key)
+    return kind
+
+
 REL26 = BranchKind("rel26", 26, 0)
 REL19 = BranchKind("rel19", 19, 5)
 REL14 = BranchKind("rel14", 14, 5)
 REL21_ADR = AdrKind("rel21_adr", page=False)
 REL21_ADRP = AdrKind("rel21_adrp", page=True)
 
-__all__ = ["BranchKind", "AdrKind", "REL26", "REL19", "REL14", "REL21_ADR", "REL21_ADRP"]
+__all__ = ["BranchKind", "AdrKind", "RegField", "reg_field", "REL26", "REL19", "REL14", "REL21_ADR", "REL21_ADRP"]
