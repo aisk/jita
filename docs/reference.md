@@ -9,7 +9,7 @@ Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Functions](#functions) · [Listings](#listings) ·
 [x64](#x64) · [Structures](#structures) ·
 [aarch64](#aarch64) · [Compared with DynASM](#compared-with-dynasm) ·
-[Errors](#errors)
+[Errors](#errors) · [Type checking](#type-checking)
 
 ## Assembler
 
@@ -24,6 +24,9 @@ a.mov(rax, 1)                 # every mnemonic is also a method
 b = Assembler("x64")          # or "aarch64", or the package jita.x64
 ```
 
+`Assembler(arch)` returns an instance of the architecture's subclass,
+`X64Assembler` or `Aarch64Assembler` (see [Type checking](#type-checking)).
+
 `with Assembler() as a:`, or `with a:` for an existing one, makes `a` the
 current assembler for the module level instruction functions and the
 `label()` directive. Contexts nest, so a macro is just a Python function
@@ -34,8 +37,9 @@ context use the method forms.
 Instruction names are lowercase. The x64 mnemonics that clash with Python
 keywords or builtins are `and_`, `or_`, `not_` and `int_`; on aarch64
 `and_` and `str_` (the methods `a.and_` and `a.str` both exist).
-`from jita.x64 import *` exports registers, size prefixes, `label`,
-`typed` and the mnemonics, and nothing else. Note that it exports `test`,
+`from jita.x64 import *` exports registers and their classes, size
+prefixes, `label`, `typed`, the mnemonics and the architecture classes,
+and nothing else. Note that it exports `test`,
 which pytest collects as a test; write `del test` or import the module
 qualified in test files.
 
@@ -274,10 +278,12 @@ as `.Lpc3`, extern slots as `strlen@slot`.
 | Operand | jita | DynASM |
 | --- | --- | --- |
 | registers | `rax`, `r8d`, `al`, `ah`, `ax`, `xmm3`, `ymm0`, `st1` | `rax`, `Rq(n)` |
+| register classes | `Gp8 Gp16 Gp32 Gp64 Xmm Ymm St Rip`, `Gp` for any of the four gp widths | |
 | by number | `gp8(n) gp16(n) gp32(n) gp64(n) xmm(n) ymm(n) st(n)` | `Rb(n) Rw(n) Rd(n) Rq(n)` |
 | memory | `qword[rbx + rcx*8 + 8]`, `dword[rax]`, `byte[rip + lbl]` | `qword [rbx+rcx*8+8]` |
 | size from the other operand | `ptr[rbx]` as in `mov(rax, ptr[rbx])` | `[rbx]` |
 | sizes | `byte word dword qword oword yword tword ptr` | `byte word dword qword oword yword` |
+| memory classes | `Mem8 Mem16 Mem32 Mem64 Mem80 Mem128 Mem256`, `MemAny` for `ptr[...]` and `rbx + 8`, `Mem` for any | |
 | rip-relative | `qword[rip + lbl]`, `lea(rax, ptr[rip + lbl])` | `[->lbl]` |
 | absolute address | `qword[0x1000]`, `dword[eax]` (with 0x67) | `[0x1000]` |
 | immediates | plain ints, range checked by value | `imm` |
@@ -363,7 +369,10 @@ with a:                           # int64_t sum(int64_t *p, size_t n)
 
 Registers are `x0`..`x30`, `w0`..`w30`, `xzr`, `wzr`, `sp`, the FP
 registers `s0`..`s31` and `d0`..`d31`, and `q0`..`q31` for `ldp`/`stp`.
-`lr` and `fp` are `x30` and `x29`. `gp64(n)`, `gp32(n)`, `fp32(n)`,
+`lr` and `fp` are `x30` and `x29`. Their classes are `X` (with `xzr`), `W`
+(with `wzr`), `Sp`, `S`, `D` and `Q`, with `Gp` for `X | W` and `Fp` for
+the FP ones; a shifted or extended register is a `RegMod[X]` or
+`RegMod[W]`. `gp64(n)`, `gp32(n)`, `fp32(n)`,
 `fp64(n)` and `fp128(n)` select a register by number (31 is xzr/wzr).
 Access sizes come from the register and the mnemonic (`ldrb`, `ldrsh`,
 `ldr w0`, `ldr d0`), so memory operands have no size prefix.
@@ -383,7 +392,8 @@ Access sizes come from the register and the mnemonic (`ldrb`, `ldrsh`,
 | label, literal | `b("loop")`, `adr(x0, lbl)`, `ldr(x0, "const")` | `b loop`, `adr x0, lbl` |
 | keyword mnemonics | `and_`, `str_` (also `a.str(...)`) | `and`, `str` |
 
-Condition codes are `eq ne cs hs cc lo mi pl vs vc hi ls ge lt gt le al`.
+Condition codes are `eq ne cs hs cc lo mi pl vs vc hi ls ge lt gt le al`,
+typed as `Cond`.
 The offset form of a load or store is chosen from the value: a scaled
 unsigned offset when it fits (`ldr x0, [x1, #8]`), otherwise a signed
 9 bit unscaled one (`ldur`). Parenthesize a shifted index,
@@ -449,3 +459,76 @@ missing extern addresses and misaligned bases. `LoadError` covers
 executable memory allocation and writes outside writable sections. Plain
 `TypeError` is used for wrong Python types, such as a float where an int
 operand is expected.
+
+## Type checking
+
+jita ships `py.typed` and type stubs, so pyright, mypy and editors see
+every register, size prefix and mnemonic with its accepted operands.
+
+```py
+from jita import Assembler
+from jita.x64 import *
+
+add(rax, rcx)                 # fine
+add(rax, ecx)                 # error: no overload of add for Gp64, Gp32
+movzx(eax, ptr[rdi])          # error: movzx needs byte[...] or word[...]
+a = Assembler("x64")          # an X64Assembler
+a.mov(eax, qword[rdi])        # error: mixed operand sizes
+```
+
+Registers are instances of width classes and memory operands of sized
+classes (see the operand tables of [x64](#x64) and [aarch64](#aarch64)),
+and each mnemonic has one overload per combination of classes the encoder
+accepts. So a checker reports wrong operand classes and widths, a wrong
+number of operands, a register where memory is needed and the reverse,
+misspelled mnemonics, `.short` on a non-branch, misspelled `b.cond`
+attributes and condition codes (`csel(x0, x1, x2, "lx")`).
+
+What depends on values stays a runtime `EncodeError`: immediate ranges and
+encodability (imm8 versus imm32, bitmask and FP immediates), instructions
+that need one specific register (`cl` as a shift count, `xmm0` for
+`blendvps`, accumulator forms of `mov64`), `sp` versus `xzr` on aarch64,
+the shape of memory operands (a rip base with an index, offset ranges,
+writeback into a transferred register) and whether a label is ever bound.
+`typed()` fields are typed `Any`, and the functions returned by
+`function` and `a.function` accept any arguments (`JitFunction` from
+`jita.runtime`), since ctypes decides the signature at runtime. A
+`MemExpr(...)` built by hand has no size class and is rejected where a
+sized operand is expected; build memory operands with `qword[...]` and
+friends.
+
+Annotate helpers with the concrete classes, or leave the parameters
+unannotated:
+
+```python
+from jita.x64 import *
+from jita.x64 import Gp64, Mem64, MemAny, X64Assembler
+
+def load(dst: Gp64, src: Mem64 | MemAny) -> None:
+    mov(dst, src)
+
+def epilogue(a: X64Assembler) -> None:
+    a.ret()
+```
+
+mypy skips the bodies of functions without annotations, so with mypy
+give helpers and `function` bodies a return annotation (`-> None`) or set
+`check_untyped_defs = true`; pyright checks them either way.
+
+`Reg` and `MemExpr` are too wide for an operand parameter: `mov(dst, src)`
+with `dst: Reg` is an error, because some registers do not fit. A union
+such as `Gp` works where every member does (`inc(r)`), but not for two
+operands that must agree in width (`add(r, r)` with `r: Gp` is an error),
+since checkers try each member on its own.
+
+`Assembler("x64")` and `Assembler("aarch64")` are typed as `X64Assembler`
+and `Aarch64Assembler`, whose methods have the same overloads as the
+module level mnemonics. `Assembler()` (host) and `Assembler(jita.x64)` are
+a plain `Assembler`, on which any method name and operands are accepted;
+annotate the parameter of a `function` body as `X64Assembler` to get the
+checks there. A misspelled method is not caught even on `X64Assembler`.
+
+The stubs `jita/x64/insns.pyi`, `jita/aarch64/insns.pyi` and the package
+`__init__.pyi` files are generated by `tools/gen_stubs.py`, which asks the
+encoder which operand classes each mnemonic accepts. Run it after changing
+the instruction tables; `--check` only reports stale stubs.

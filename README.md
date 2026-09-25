@@ -6,6 +6,7 @@ and running it at runtime, in the spirit of LuaJIT's
 directives are ordinary Python calls; jita encodes them, links labels and
 external symbols, and loads the result into executable memory that you
 call through `ctypes`. It has no runtime dependencies and needs Python 3.14.
+The API ships type stubs, so pyright and mypy check instruction operands.
 
 ```python
 import ctypes
