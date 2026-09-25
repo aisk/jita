@@ -1,13 +1,15 @@
-"""Run every example as a subprocess and check what it prints."""
+"""Run every example and README code block as a subprocess and check them."""
 
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+ROOT = Path(__file__).resolve().parent.parent
+EXAMPLES = ROOT / "examples"
 
 EXPECTED = {
     "aarch64_hello.py": ["b.ne loop", "; rel19 -> loop", "ldr x3, [x0], #8"],
@@ -53,3 +55,12 @@ def test_example(name):
     lines = proc.stdout.splitlines()
     for want in EXPECTED[name]:
         assert any(want in line for line in lines), f"{want!r} not in output of {name}:\n{proc.stdout}"
+
+
+README_SNIPPETS = re.findall(r"```python\n(.*?)```", (ROOT / "README.md").read_text(), re.S)
+
+
+@pytest.mark.parametrize("code", README_SNIPPETS, ids=[f"readme{i}" for i in range(len(README_SNIPPETS))])
+def test_readme_snippet_runs_as_pasted(code):
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr

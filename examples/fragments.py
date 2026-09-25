@@ -26,14 +26,14 @@ with STEP:
     imul(acc, x)
     add(acc, c)
 
-total, ptr, n, done = Hole.gp64("total"), Hole.gp64("ptr"), Hole.gp64("n"), Hole.label("done")
+total, src, n, done = Hole.gp64("total"), Hole.gp64("src"), Hole.gp64("n"), Hole.label("done")
 SUM = Fragment()
 with SUM:
     xor(total, total)
     test(n, n)
     jz(done)
     label("loop")  # a fresh label in every instance
-    add(total, qword[ptr + n * 8 - 8])
+    add(total, qword[src + n * 8 - 8])
     dec(n)
     jnz.short("loop")
 
@@ -47,10 +47,10 @@ def build(coeffs: list[int]) -> Assembler:
         for coef in coeffs[1:]:
             STEP.instantiate(acc=rax, x=rdi, c=coef)
         after_a, after_b = Label(), Label()
-        SUM.instantiate(total=r9, ptr=rsi, n=rdx, done=after_a)
+        SUM.instantiate(total=r9, src=rsi, n=rdx, done=after_a)
         label(after_a)
         add(rax, r9)
-        SUM.instantiate(total=r10, ptr=rcx, n=r8, done=after_b)
+        SUM.instantiate(total=r10, src=rcx, n=r8, done=after_b)
         label(after_b)
         add(rax, r10)
         ret()

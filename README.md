@@ -167,17 +167,22 @@ function out of several instances.
 generated code and Python share one definition of the layout:
 
 ```python
+import ctypes
+from jita import Assembler
+from jita.x64 import *
+
 class Point(ctypes.Structure):
     _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32), ("tag", ctypes.c_uint8),
                 ("next", ctypes.c_void_p), ("v", ctypes.c_double * 4)]
 
 p = typed(rdi, Point)             # base register, or an address like rdi + 16
-mov(eax, p.x)                     # dword[rdi]
-movzx(eax, p.tag)                 # byte[rdi+8]
-mov(rdi, p.next)                  # qword[rdi+16]
-movsd(xmm0, p.v[1])               # qword[rdi+32]
-movsd(xmm1, p.v[rcx])             # qword[rdi+rcx*8+24]
-lea(rax, p.v.addr)                # [rdi+24], unsized
+with Assembler():
+    mov(eax, p.x)                 # dword[rdi]
+    movzx(eax, p.tag)             # byte[rdi+8]
+    movsd(xmm0, p.v[1])           # qword[rdi+32]
+    movsd(xmm1, p.v[rcx])         # qword[rdi+rcx*8+24]
+    lea(rax, p.v.addr)            # [rdi+24], unsized
+    mov(rdi, p.next)              # qword[rdi+16]
 ```
 
 Scalar fields are sized memory operands (1, 2, 4 or 8 bytes, pointers are
@@ -188,6 +193,8 @@ and `p.ctype` give the start address, `ctypes.sizeof` and the type; a field
 that clashes with those names is reached as `p["size"]`. Pointer fields are
 not followed: load the pointer and call `typed` on the register again. Bit
 fields and `c_longdouble` have no memory operand and raise `EncodeError`.
+In a fragment, gp64 register holes work as the base and as an array index:
+`typed(Hole.gp64("s"), Point).v[Hole.gp64("i")]`.
 
 ## Differences from DynASM
 
