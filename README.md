@@ -1,14 +1,14 @@
 # jita
 
-jita is a Python library for writing x64 machine code by hand and running it
-at runtime, at the abstraction level of LuaJIT's
+jita is a Python library for writing x64 and aarch64 machine code by hand
+and running it at runtime, at the abstraction level of LuaJIT's
 [DynASM](https://luajit.org/dynasm.html). You write instructions, labels and
 data directives as ordinary Python calls; jita encodes them, links labels
 and external symbols, and loads the result into executable memory that you
-can call through `ctypes`. The instruction templates are a port of DynASM's
-x86 table (`dasm_x86.lua`, MIT license, Copyright (C) Mike Pall), so
-encodings match what DynASM would emit, apart from the differences listed
-below. jita has no runtime dependencies.
+can call through `ctypes`. The instruction templates are ports of DynASM's
+x86 and ARM64 tables (`dasm_x86.lua` and `dasm_arm64.lua`, MIT license,
+Copyright (C) Mike Pall), so encodings match what DynASM would emit, apart
+from the differences listed below. jita has no runtime dependencies.
 
 ## Install and run
 
@@ -23,8 +23,8 @@ uv run python examples/sum_array.py
 The `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, calls into libc, an SSE2 dot
 product, a linked list of ctypes structures, code specialized by
-Python-level parameters and a function assembled from fragments with
-holes.
+Python-level parameters, a function assembled from fragments with holes
+and an aarch64 function whose listing prints on any host.
 
 ## Example
 
@@ -197,8 +197,84 @@ fields and `c_longdouble` have no memory operand and raise `EncodeError`.
 - Everything is known when an instruction is encoded, so there is no
   preprocessor, no action list and no separate link step to call by hand.
 
+## aarch64
+
+`jita.aarch64` works like `jita.x64`. `Assembler()` picks it on an aarch64
+host; `Assembler(jita.aarch64)` generates aarch64 code anywhere, for
+example to print a listing.
+
+```python
+from jita import Assembler
+import jita.aarch64 as arm
+from jita.aarch64 import *
+
+a = Assembler(arm)
+with a:                           # int64_t sum(int64_t *p, size_t n)
+    mov(x2, xzr)
+    cbz(x1, "done")
+    label("loop")
+    ldr(x3, mem.post[x0, 8])
+    add(x2, x2, x3)
+    subs(x1, x1, 1)
+    b.ne("loop")
+    label("done")
+    mov(x0, x2)
+    ret()
+```
+
+Registers are `x0`..`x30`, `w0`..`w30`, `xzr`, `wzr`, `sp`, the FP
+registers `s0`..`s31` and `d0`..`d31`, and `q0`..`q31` for `ldp`/`stp`.
+`lr` and `fp` are `x30` and `x29`. `gp64(n)`, `gp32(n)`, `fp32(n)`,
+`fp64(n)` and `fp128(n)` select a register by number (31 is xzr/wzr).
+Access sizes come from the register and the mnemonic (`ldrb`, `ldrsh`,
+`ldr w0`, `ldr d0`), so memory operands have no size prefix.
+
+| What | jita | DynASM / GNU as |
+| --- | --- | --- |
+| shifted register | `x2 << 3`, `x2 >> 3`, `x2.lsl(3)`, `x2.lsr(3)`, `x2.asr(3)` | `x2, lsl #3`, `x2, lsr #3`, `x2, asr #3` |
+| extended register | `w2.uxtw()`, `w2.sxtw(2)`, `x2.sxtx(1)`, also `uxtb uxth uxtx sxtb sxth` | `w2, uxtw`, `w2, sxtw #2` |
+| immediate | `add(x0, x1, 16)`, `fmov(d0, 1.5)` | `#16`, `#1.5` |
+| wide move shift | `movk(x0, 0xbeef, lsl=16)` | `movk x0, #0xbeef, lsl #16` |
+| base, offset | `mem[x0]`, `mem[x0 + 8]`, `mem[sp - 16]` | `[x0]`, `[x0, #8]`, `[sp, #-16]` |
+| register offset | `mem[x0 + x1]`, `mem[x0 + (x1 << 3)]`, `mem[x0 + w1.uxtw(2)]` | `[x0, x1]`, `[x0, x1, lsl #3]`, `[x0, w1, uxtw #2]` |
+| pre-index | `mem.pre[sp - 16]` | `[sp, #-16]!` |
+| post-index | `mem.post[x0, 8]` | `[x0], #8` |
+| condition | `csel(x0, x1, x2, "ne")`, `cset(x0, "lo")` | `ne`, `lo` |
+| conditional branch | `b.eq(lbl)` or `beq(lbl)` | `beq lbl` / `b.eq lbl` |
+| label, literal | `b("loop")`, `adr(x0, lbl)`, `ldr(x0, "const")` | `b ->loop`, `adr x0, ->lbl` |
+| keyword mnemonics | `and_`, `str_` (also `a.str(...)`) | `and`, `str` |
+
+Condition codes are `eq ne cs hs cc lo mi pl vs vc hi ls ge lt gt le al`.
+The offset form of a load or store is chosen from the value: a scaled
+unsigned offset when it fits (`ldr x0, [x1, #8]`), otherwise a signed
+9 bit unscaled one (`ldur`). Parenthesize a shifted index,
+`mem[x0 + (x1 << 3)]`, since `<<` binds weaker than `+`.
+
+The instruction set is DynASM's ARM64 table: integer arithmetic and
+logic with shifted, extended and immediate operands, moves (`mov`,
+`movz`, `movn`, `movk`), conditional select and compare, multiply and
+divide, bitfield operations and their aliases, loads and stores of
+every size with all addressing modes, load/store pair, branches
+(`b`, `bl`, `br`, `blr`, `ret`, `cbz`, `tbz`, `b.cond`), `adr`, `adrp`,
+`bti`, pointer authentication branches, `nop`, `brk`, and scalar
+single/double floating point (arithmetic, `fmadd` family, conversions,
+rounding, compares, `fcsel`, `fmov` with immediates). SIMD, atomics,
+system instructions and barriers are not in the table. `mov` accepts the
+immediates that `movz` or a logical immediate can encode; build other
+constants with `movz`/`movk`.
+
+jita checks operands more strictly than a plain field encoder: register
+31 is only accepted as `sp` where the instruction means the stack
+pointer and only as `xzr` where it means zero, 32 bit instructions reject
+shift amounts and bit positions above 31, bitfield aliases check lsb and
+width, the `cset`/`cinc` family rejects `al`, and loads that write back
+into a register they also load are errors. Branches to labels are linked
+with `target - instruction address`; `adrp` uses the 4KB page
+difference.
+
 ## Status
 
-x64 only. Tested on Linux. macOS uses the same mmap/mprotect path but is
-untested, and executable memory on Windows is not implemented yet. aarch64
-is planned next.
+x64 and aarch64. Tested on Linux. aarch64 encodings are checked against
+DynASM and an aarch64 assembler on an x86 host; running aarch64 code has
+not been tried on hardware yet. macOS uses the same mmap/mprotect path but
+is untested, and executable memory on Windows is not implemented yet.
