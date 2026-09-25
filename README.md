@@ -34,16 +34,16 @@ from jita.x64 import *
 def build():
     a = Assembler()
     with a:                       # module level mnemonics emit into `a`
-        loop, done = Label(), Label()
+        loop = Label()            # a label object, bound with here()
         xor(eax, eax)             # int64_t sum(int64_t *p, size_t n)
         test(rsi, rsi)
-        jz(done)
+        jz("done")                # or a name, bound with a.label("done")
         loop.here()
         add(rax, qword[rdi])
         add(rdi, 8)
         dec(rsi)
         jnz(loop)
-        done.here()
+        a.label("done")
         ret()
     return a
 
