@@ -13,23 +13,28 @@ Offsets and sizes come from ctypes itself (`Type.field.offset`,
 lay out exactly as ctypes lays them out.
 """
 
-from __future__ import annotations
-
 import ctypes
+from _ctypes import CFuncPtr
 from dataclasses import replace
-from typing import Any
+from typing import Any, overload
 
 from ..core.errors import EncodeError
-from .mem import MemExpr
+from .mem import MemAny, MemExpr, sized
 from .regs import Reg
 
 __all__ = ["typed", "Typed", "TypedArray"]
 
 _AGGREGATES = (ctypes.Structure, ctypes.Union)
-_SCALARS = (ctypes._SimpleCData, ctypes._Pointer, ctypes._CFuncPtr)
+_SCALARS = (ctypes._SimpleCData, ctypes._Pointer, CFuncPtr)
 _SCALAR_SIZES = (1, 2, 4, 8)
 
 
+@overload
+def typed(base: Reg | MemExpr, ctype: type[ctypes.Structure] | type[ctypes.Union]) -> Typed: ...
+@overload
+def typed(base: Reg | MemExpr, ctype: type[ctypes.Array[Any]]) -> TypedArray: ...
+@overload
+def typed(base: Reg | MemExpr, ctype: type[object]) -> Any: ...
 def typed(base: Reg | MemExpr, ctype: type) -> Any:
     """View the memory at `base` as the ctypes type `ctype`.
 
@@ -38,12 +43,13 @@ def typed(base: Reg | MemExpr, ctype: type) -> Any:
     whose attributes are its fields, an Array gives a `TypedArray`, and a
     scalar type gives the sized memory operand directly.
     """
+    mem: MemAny
     if isinstance(base, Reg):
-        mem = MemExpr(base=base)
+        mem = MemAny(base=base)
     elif isinstance(base, MemExpr):
         if base.size is not None:
             raise EncodeError(f"typed() needs an unsized address, got {base}; drop the size prefix")
-        mem = base
+        mem = base if isinstance(base, MemAny) else MemAny(base.base, base.index, base.scale, base.disp, base.label)
     else:
         raise TypeError(f"typed() base must be a register or memory expression, got {base!r}")
     if not isinstance(ctype, type) or not issubclass(ctype, (*_AGGREGATES, ctypes.Array, *_SCALARS)):
@@ -51,7 +57,7 @@ def typed(base: Reg | MemExpr, ctype: type) -> Any:
     return _view(mem, ctype)
 
 
-def _view(mem: MemExpr, ctype: type) -> Any:
+def _view(mem: MemAny, ctype: type) -> Any:
     if issubclass(ctype, _AGGREGATES):
         return Typed(mem, ctype)
     if issubclass(ctype, ctypes.Array):
@@ -59,7 +65,7 @@ def _view(mem: MemExpr, ctype: type) -> Any:
     return _scalar(mem, ctype)
 
 
-def _scalar(mem: MemExpr, ctype: type) -> MemExpr:
+def _scalar(mem: MemAny, ctype: type) -> MemExpr:
     if getattr(ctype, "_type_", None) == "g":
         raise EncodeError(f"{ctype.__name__} (long double) has no x64 memory operand size")
     le = getattr(ctype, "__ctype_le__", ctype)
@@ -68,14 +74,14 @@ def _scalar(mem: MemExpr, ctype: type) -> MemExpr:
     size = ctypes.sizeof(ctype)
     if size not in _SCALAR_SIZES:
         raise EncodeError(f"{ctype.__name__} is {size} bytes, not a 1, 2, 4 or 8 byte scalar")
-    return replace(mem, size=size)
+    return sized(mem, size)
 
 
 def _is_dunder(name: str) -> bool:
     return len(name) > 4 and name.startswith("__") and name.endswith("__")
 
 
-def _offset(mem: MemExpr, offset: int) -> MemExpr:
+def _offset(mem: MemAny, offset: int) -> MemAny:
     return mem + offset if offset else mem
 
 
@@ -84,7 +90,8 @@ class Typed:
 
     Attribute access yields the field: a sized `MemExpr` for scalars, a
     `Typed` for nested structures and unions, a `TypedArray` for arrays.
-    `addr` is the unsized `MemExpr` of the start, `size` is
+    Type checkers see fields as `Any`. `addr` is the unsized `MemAny` of
+    the start, `size` is
     `ctypes.sizeof(ctype)` and `ctype` the type. A field whose name clashes
     with these three is reached with `view["size"]`. Fields whose names
     start with an underscore (`_pad`) are attributes too; only dunder
@@ -92,8 +99,10 @@ class Typed:
     """
 
     __slots__ = ("addr", "ctype")
+    addr: MemAny
+    ctype: type
 
-    def __init__(self, addr: MemExpr, ctype: type):
+    def __init__(self, addr: MemAny, ctype: type):
         object.__setattr__(self, "addr", addr)
         object.__setattr__(self, "ctype", ctype)
 
@@ -143,8 +152,10 @@ class TypedArray:
     """
 
     __slots__ = ("addr", "ctype")
+    addr: MemAny
+    ctype: type[ctypes.Array[Any]]
 
-    def __init__(self, addr: MemExpr, ctype: type):
+    def __init__(self, addr: MemAny, ctype: type[ctypes.Array[Any]]):
         object.__setattr__(self, "addr", addr)
         object.__setattr__(self, "ctype", ctype)
 
@@ -157,10 +168,10 @@ class TypedArray:
 
     @property
     def element(self) -> type:
-        return self.ctype._type_
+        return getattr(self.ctype, "_type_")
 
     def __len__(self) -> int:
-        return self.ctype._length_
+        return getattr(self.ctype, "_length_")
 
     def __getitem__(self, i: int | Reg) -> Any:
         elem = self.element

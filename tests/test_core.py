@@ -346,6 +346,28 @@ def test_nested_contexts():
         a.__exit__(None, None, None)
 
 
+def test_assembler_subclasses_work_for_any_arch():
+    import jita.aarch64 as aarch64
+    from jita.aarch64.insns import Aarch64Assembler
+    from jita.x64.insns import X64Assembler
+
+    class MyAssembler(Assembler):
+        pass
+
+    for arch in ("x64", "aarch64", None):
+        assert type(MyAssembler(arch)) is MyAssembler
+    assert MyAssembler("aarch64").arch is aarch64.ARCH
+
+    class MyX64(X64Assembler):
+        pass
+
+    assert MyX64().arch is x64.ARCH
+    with pytest.raises(TypeError, match="cannot assemble for aarch64"):
+        MyX64("aarch64")
+    with pytest.raises(TypeError, match="cannot assemble for x64"):
+        Aarch64Assembler("x64")
+
+
 def test_pc_label_binds_into_owner():
     a, b = Assembler(x64), Assembler(x64)
     a.bytes(b"\x90")

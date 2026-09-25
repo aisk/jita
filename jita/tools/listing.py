@@ -1,7 +1,5 @@
 """Human readable dump of an assembler's sections."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from ..core.labels import Extern, Label
@@ -65,11 +63,13 @@ def listing(asm: Assembler, image: Image | None = None, width: int = 8) -> str:
     names = _Names(asm.labels, getattr(asm, "extern_slots", None))
     labels: dict[int, dict[int, list[Label]]] = {}
     for lbl in asm.labels:
-        labels.setdefault(id(lbl.section), {}).setdefault(lbl.offset, []).append(lbl)
+        if lbl.offset is not None:  # asm.labels holds bound labels only
+            labels.setdefault(id(lbl.section), {}).setdefault(lbl.offset, []).append(lbl)
 
     lines = []
     for sec in asm.sections.values():
         head = f"section {sec.name} (align {sec.align}, {len(sec.buf)} bytes)"
+        data: bytes | bytearray
         if image is not None:
             start = image.section_offsets[sec.name]
             data = image.data[start : start + len(sec.buf)]
@@ -95,12 +95,14 @@ def listing(asm: Assembler, image: Image | None = None, width: int = 8) -> str:
             inside.update(range(lo + 1, hi))
         for p in sec.patches:
             cuts |= {p.offset, p.offset + p.kind.size}
-        cuts = sorted(c for c in cuts - inside if c <= len(data))
-        for lo, hi in zip(cuts, cuts[1:] + [None]):
+        bounds = sorted(c for c in cuts - inside if c <= len(data))
+        ends: list[int | None] = [*bounds[1:], None]
+        for lo, end in zip(bounds, ends):
             for lbl in sec_labels.get(lo, ()):
                 lines.append(f"{names(lbl)}:")
-            if hi is None:
+            if end is None:
                 break
+            hi = end
             insn = insns.get(lo)
             if insn is not None and insn[0] == hi:
                 _, mn, ops = insn

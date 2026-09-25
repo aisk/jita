@@ -1,9 +1,10 @@
 """The interface an architecture package exposes to the Assembler."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .assembler import Assembler
 
 
 class Arch:
@@ -19,6 +20,13 @@ class Arch:
     def insns(self) -> dict[str, Callable[..., Any]]:
         """Mnemonic name -> function taking `(*operands, asm=None)`."""
         return {}
+
+    @property
+    def assembler_class(self) -> type[Assembler]:
+        """The class `Assembler(arch)` instantiates for this architecture."""
+        from .assembler import Assembler
+
+        return Assembler
 
     def nop_fill(self, n: int) -> bytes:
         """Exactly `n` bytes of padding that is safe to execute."""

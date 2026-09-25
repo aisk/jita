@@ -1,6 +1,7 @@
 """aarch64 architecture: registers, memory operands and mnemonic functions."""
 
-from __future__ import annotations
+# __all__ is computed; the stub next to this module carries it literally.
+# pyright: reportUnsupportedDunderAll=false
 
 import ctypes
 import platform
@@ -15,6 +16,7 @@ from . import mem as _mem
 from . import regs as _regs
 from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
+from .insns import Aarch64Assembler
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
 
@@ -36,6 +38,10 @@ class Aarch64Arch(Arch):
     def insns(self) -> dict[str, Callable[..., Any]]:
         """`jita.aarch64.insns.INSNS`: Python name -> mnemonic function."""
         return _INSNS
+
+    @property
+    def assembler_class(self) -> type[Aarch64Assembler]:
+        return Aarch64Assembler
 
     def nop_fill(self, n: int) -> bytes:
         """n bytes of padding: zero bytes up to the next multiple of 4, then
@@ -68,6 +74,15 @@ def _find_clear_cache() -> Callable[..., Any]:
 
 ARCH = Aarch64Arch()
 
-# Keep `from jita.aarch64 import *` to registers, memory operands, mnemonics
-# and ARCH; helper imports and submodule names are not exported.
-__all__ = ["ARCH", "Aarch64Arch", "label", *_insns.__all__, *_mem.__all__, *_regs.__all__]
+# Keep `from jita.aarch64 import *` to registers, memory operands, mnemonics,
+# ARCH and the arch classes; helper imports and submodule names are not
+# exported. `__init__.pyi` carries the same list literally.
+__all__ = [
+    "ARCH",
+    "Aarch64Arch",
+    "Aarch64Assembler",
+    "label",
+    *_insns.__all__,
+    *_mem.__all__,
+    *_regs.__all__,
+]

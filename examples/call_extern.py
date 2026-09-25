@@ -68,6 +68,7 @@ def build() -> Assembler:
 def main() -> None:
     libc = ctypes.CDLL(None)
     strlen_addr = ctypes.cast(libc.strlen, ctypes.c_void_p).value
+    assert strlen_addr is not None
     # The callables keep the module alive; no `with` or close() is needed.
     mod = build().load(externs={"strlen": strlen_addr})
     sig = (ctypes.c_size_t, ctypes.c_char_p)

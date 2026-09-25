@@ -24,6 +24,7 @@ Run with `uv run python examples/conditional_codegen.py`.
 """
 
 import ctypes
+from typing import Any
 
 from jita import Label, function
 from jita.tools.listing import listing
@@ -75,7 +76,7 @@ def make_reduce(op: str, clamp: int | None = None, unroll: int = 1):
 def main() -> None:
     values = [7, -3, 12, 5, 9, 1]
     arr = (ctypes.c_int64 * len(values))(*values)
-    variants = [
+    variants: list[dict[str, Any]] = [
         dict(op="add"),
         dict(op="add", clamp=20, unroll=2),
         dict(op="max", unroll=2),

@@ -1,12 +1,11 @@
 """The Assembler: sections, labels, data directives and the current context."""
 
-from __future__ import annotations
-
+import builtins
 import importlib
 import platform
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Self, cast, overload
 
 from .arch import Arch
 from .errors import EncodeError, JitaError, LinkError
@@ -15,14 +14,18 @@ from .patch import ABS64, ABS_BY_SIZE, Patch, PatchKind, SlotKind
 from .section import Section
 
 if TYPE_CHECKING:
-    from ..runtime.loader import Module
+    from ..aarch64 import Aarch64Arch
+    from ..aarch64.insns import Aarch64Assembler
+    from ..runtime.loader import JitFunction, Module
+    from ..x64 import X64Arch
+    from ..x64.insns import X64Assembler
     from .link import Image
 
 _current: ContextVar[Assembler | None] = ContextVar("jita_assembler", default=None)
 # Tokens of the `with asm:` blocks active in this context, innermost last.
 # Kept in a ContextVar so concurrent tasks entering the same Assembler each
 # reset their own token.
-_tokens: ContextVar[tuple[Token, ...]] = ContextVar("jita_assembler_tokens", default=())
+_tokens: ContextVar[tuple[Token[Assembler | None], ...]] = ContextVar("jita_assembler_tokens", default=())
 
 
 def current() -> Assembler:
@@ -53,7 +56,7 @@ def _host_arch() -> Arch:
 _ARCH_NAMES = ("x64", "aarch64")
 
 
-def _resolve_arch(arch: Any) -> Arch:
+def _resolve_arch(arch: object) -> Arch:
     if arch is None:
         return _host_arch()
     if isinstance(arch, str):
@@ -78,7 +81,7 @@ class _SectionSwitch:
     def __enter__(self) -> Section:
         return self.section
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         self._asm.cur = self._prev
 
 
@@ -92,14 +95,17 @@ class _BoundInsn:
     def __init__(self, fn: Callable[..., Any], asm: Assembler):
         self._fn, self._asm = fn, asm
 
-    def __call__(self, *ops: Any, **kw: Any) -> Any:
-        return self._fn(*ops, asm=self._asm, **kw)
+    def __call__(self, *ops: object, **kw: object) -> None:
+        self._fn(*ops, asm=self._asm, **kw)
 
+    # A property keeps `__slots__` (a `__doc__` slot would clash with the
+    # class docstring); checkers see it as overriding the plain attribute.
     @property
-    def __doc__(self) -> str | None:  # type: ignore[override]
+    def __doc__(self) -> str | None:  # type: ignore[override]  # pyright: ignore[reportIncompatibleVariableOverride]
         return self._fn.__doc__
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> _BoundInsn:
+        # Typed as a bound instruction, the common case (`a.jmp.short`).
         attr = getattr(self._fn, name)
         return _BoundInsn(attr, self._asm) if callable(attr) else attr
 
@@ -107,12 +113,46 @@ class _BoundInsn:
         return f"<bound {self._fn!r} of {self._asm!r}>"
 
 
-class Assembler:
-    def __init__(self, arch: Any = None):
+class _AssemblerInit:
+    # Assembler.__init__ lives one class above Assembler.__new__. mypy
+    # takes the constructor signature from __init__ when a class defines
+    # both, which would hide the __new__ overloads that make
+    # `Assembler("x64")` an X64Assembler.
+
+    def __init__(self, arch: object = None) -> None:
         """`arch` is an Arch object, a package exposing one as `ARCH`
         (e.g. `jita.x64`) or the name of such a jita package ("x64",
         "aarch64"). None selects the host architecture."""
-        self.arch: Arch = _resolve_arch(arch)
+        cast(Assembler, self)._setup(arch)
+
+
+class Assembler(_AssemblerInit):
+    """Collects sections, labels and patches for one piece of generated code.
+
+    `Assembler(arch)` returns an instance of the architecture's subclass
+    (`X64Assembler`, `Aarch64Assembler`), whose mnemonic methods are typed
+    for static checkers.
+    """
+
+    # The architecture a subclass uses when `arch` is None.
+    _default_arch: str | None = None
+
+    @overload
+    def __new__(cls, arch: Literal["x64"] | X64Arch) -> X64Assembler: ...
+    @overload
+    def __new__(cls, arch: Literal["aarch64"] | Aarch64Arch) -> Aarch64Assembler: ...
+    @overload
+    def __new__(cls, arch: object = None) -> Self: ...
+    def __new__(cls, arch: object = None) -> Assembler:
+        target = _resolve_arch(arch).assembler_class if cls is Assembler else cls
+        return object.__new__(target)
+
+    def _setup(self, arch: object) -> None:
+        self.arch: Arch = _resolve_arch(self._default_arch if arch is None else arch)
+        # An arch specific class (X64Assembler) only assembles for its arch;
+        # other subclasses of Assembler are plain assemblers for any arch.
+        if self._default_arch is not None and not isinstance(self, self.arch.assembler_class):
+            raise TypeError(f"{type(self).__name__} cannot assemble for {self.arch.name}")
         self.sections: dict[str, Section] = {}
         self.cur: Section = self._get_section("code")
         self.pc = PcLabels(self)
@@ -126,11 +166,11 @@ class Assembler:
 
     # context
 
-    def __enter__(self) -> Assembler:
+    def __enter__(self) -> Self:
         _tokens.set((*_tokens.get(), _current.set(self)))
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         stack = _tokens.get()
         if not stack:
             raise JitaError("Assembler context exited without a matching enter")
@@ -200,11 +240,11 @@ class Assembler:
         sec = self.cur
         if not 0 <= offset <= sec.pos() - kind.size:
             raise ValueError(f"patch at {offset} is outside the emitted bytes")
-        if isinstance(kind, SlotKind):
+        if isinstance(kind, SlotKind) and isinstance(target, Extern):
             kind, target = kind.field, self.extern_slot(target)
         sec.patches.append(Patch(offset, kind, target, addend))
 
-    def note_insn(self, start: int, mnemonic: str, ops: tuple = ()) -> None:
+    def note_insn(self, start: int, mnemonic: str, ops: tuple[object, ...] = ()) -> None:
         """Record that the bytes from `start` to pos form one instruction.
         Encoders call this after emitting; listings use it to print one
         instruction per line."""
@@ -290,7 +330,7 @@ class Assembler:
 
     # data directives
 
-    def _data(self, size: int, vals: tuple) -> None:
+    def _data(self, size: int, vals: tuple[int | str | Label | Extern, ...]) -> None:
         for v in vals:
             if isinstance(v, str):
                 v = self.named(v)
@@ -316,10 +356,10 @@ class Assembler:
     def qword(self, *vals: int | str | Label | Extern) -> None:
         self._data(8, vals)
 
-    def bytes(self, data: bytes) -> None:
+    def bytes(self, data: builtins.bytes) -> None:
         self.emit(data)
 
-    def align(self, n: int, fill: bytes | None = None) -> None:
+    def align(self, n: int, fill: builtins.bytes | None = None) -> None:
         """Pad to a multiple of n. `fill` is repeated; None uses the arch's
         NOP padding in sections that contain instructions and zero bytes
         in pure data sections. Also raises the section alignment to at
@@ -369,7 +409,7 @@ class Assembler:
         *argtypes: Any,
         entry: Label | str | None = None,
         externs: Mapping[str, int] | None = None,
-    ) -> Any:
+    ) -> JitFunction:
         """Load into a fresh Module and return a ctypes callable bound to
         `entry` (default: image base). The callable keeps the Module alive
         through its `module` attribute and this assembler through
@@ -378,11 +418,11 @@ class Assembler:
         Every call loads a separate copy of the code: two callables made
         this way do not share writable data. For several entries into one
         copy use `load()` and `Module.function`."""
-        from ..runtime.loader import load
+        from ..runtime.loader import JitFunction, load
 
         fn = load(self, externs).function(restype, *argtypes, entry=entry)
-        fn.assembler = self
-        return fn
+        setattr(fn, "assembler", self)
+        return cast(JitFunction, fn)
 
 
 def _check_pow2(n: int) -> None:

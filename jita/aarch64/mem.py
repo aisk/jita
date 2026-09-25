@@ -16,16 +16,15 @@ the value, as DynASM does. Load a label or an Extern's address with
 `ldr(x0, lbl)` (pc-relative literal) instead of a memory operand.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
+from typing import Any, NoReturn, TypeGuard
 
 from ..core.errors import EncodeError
 from ..core.operand import Operand
 from .regs import Mod, Reg, RegMod
 
 
-def _is_int(x) -> bool:
+def _is_int(x: object) -> TypeGuard[int]:
     return isinstance(x, int) and not isinstance(x, bool)
 
 
@@ -40,7 +39,7 @@ class Addr:
     def __init__(self, base: Reg, index: Reg | None = None, mod: Mod | None = None, disp: int = 0):
         self.base, self.index, self.mod, self.disp = base, index, mod, disp
 
-    def __add__(self, other) -> Addr:
+    def __add__(self, other: int | Reg | RegMod[Any]) -> Addr:
         if _is_int(other):
             return Addr(self.base, self.index, self.mod, self.disp + other)
         if isinstance(other, (Reg, RegMod)):
@@ -51,17 +50,19 @@ class Addr:
             return Addr(self.base, other, None, self.disp)
         return NotImplemented
 
-    __radd__ = __add__
+    def __radd__(self, other: int) -> Addr:
+        return self.__add__(other)
 
-    def __sub__(self, other) -> Addr:
+    def __sub__(self, other: int) -> Addr:
         if _is_int(other):
             return Addr(self.base, self.index, self.mod, self.disp - other)
         return NotImplemented
 
-    def __lshift__(self, other):
+    def __lshift__(self, other: object) -> NoReturn:
         raise EncodeError("write a scaled index as mem[base + (index << n)]")
 
-    __rshift__ = __lshift__
+    def __rshift__(self, other: object) -> NoReturn:
+        raise EncodeError("write a scaled index as mem[base + (index << n)]")
 
     def __str__(self) -> str:
         parts = [str(self.base)]
@@ -92,7 +93,7 @@ class MemExpr(Operand):
     disp: int = 0
     mode: str = "offset"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         base, index, mod = self.base, self.index, self.mod
         if not isinstance(base, Reg) or not (base.kind == "sp" or (base.rt == "x" and base.code < 31)):
             raise EncodeError(f"{base} cannot be a memory base (use x0..x30 or sp)")
@@ -134,7 +135,7 @@ class MemExpr(Operand):
     __repr__ = __str__
 
 
-def _from(x, mode: str) -> MemExpr:
+def _from(x: object, mode: str) -> MemExpr:
     if isinstance(x, Reg):
         return MemExpr(x, mode=mode)
     if isinstance(x, Addr):
@@ -149,7 +150,7 @@ def _from(x, mode: str) -> MemExpr:
 class _Post:
     __slots__ = ()
 
-    def __getitem__(self, key) -> MemExpr:
+    def __getitem__(self, key: tuple[Reg, int]) -> MemExpr:
         if not (isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], Reg) and _is_int(key[1])):
             raise EncodeError(f"post-index is written mem.post[base, offset], got {key!r}")
         return MemExpr(key[0], disp=key[1], mode="post")
@@ -161,7 +162,7 @@ class _Post:
 class _Pre:
     __slots__ = ()
 
-    def __getitem__(self, key) -> MemExpr:
+    def __getitem__(self, key: Reg | Addr | MemExpr) -> MemExpr:
         return _from(key, "pre")
 
     def __repr__(self) -> str:
@@ -175,7 +176,7 @@ class _Mem:
     pre = _Pre()
     post = _Post()
 
-    def __getitem__(self, key) -> MemExpr:
+    def __getitem__(self, key: Reg | Addr | MemExpr) -> MemExpr:
         return _from(key, "offset")
 
     def __repr__(self) -> str:

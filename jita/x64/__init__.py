@@ -1,6 +1,7 @@
 """x64 architecture: registers, memory operands and mnemonic functions."""
 
-from __future__ import annotations
+# __all__ is computed; the stub next to this module carries it literally.
+# pyright: reportUnsupportedDunderAll=false
 
 from collections.abc import Callable
 from typing import Any
@@ -12,6 +13,7 @@ from . import mem as _mem
 from . import regs as _regs
 from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
+from .insns import X64Assembler
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
 from .structs import typed
@@ -40,6 +42,10 @@ class X64Arch(Arch):
         """`jita.x64.insns.INSNS`: Python name -> mnemonic function."""
         return _INSNS
 
+    @property
+    def assembler_class(self) -> type[X64Assembler]:
+        return X64Assembler
+
     def nop_fill(self, n: int) -> bytes:
         return _NOPS[9] * (n // 9) + _NOPS[n % 9]
 
@@ -50,6 +56,15 @@ class X64Arch(Arch):
 ARCH = X64Arch()
 
 # Keep `from jita.x64 import *` to registers, size prefixes, memory operands,
-# mnemonics, `typed` and ARCH; helper imports and submodule names are not
-# exported.
-__all__ = ["ARCH", "X64Arch", "label", "typed", *_insns.__all__, *_mem.__all__, *_regs.__all__]
+# mnemonics, `typed`, ARCH and the arch classes; helper imports and submodule
+# names are not exported. `__init__.pyi` carries the same list literally.
+__all__ = [
+    "ARCH",
+    "X64Arch",
+    "X64Assembler",
+    "label",
+    "typed",
+    *_insns.__all__,
+    *_mem.__all__,
+    *_regs.__all__,
+]

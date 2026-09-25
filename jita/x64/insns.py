@@ -11,14 +11,19 @@ form: `jmp.short(lbl)`, `jz.short(lbl)`.
 `mov64` (alias `movabs`) is DynASM's x64-only 64 bit immediate / absolute
 address move. Plain `mov r64, imm` switches to it automatically when the
 immediate does not fit in a sign-extended int32 or is a Label/Extern.
+
+Type checkers read `insns.pyi` next to this module, which
+`tools/gen_stubs.py` generates with one overload per accepted combination
+of operand classes.
 """
 
-from __future__ import annotations
+# __all__ is computed; the stub next to this module carries it literally.
+# pyright: reportUnsupportedDunderAll=false
 
 from collections.abc import Callable
 from typing import Any
 
-from ..core.assembler import current
+from ..core.assembler import Assembler, current
 from .encoder import MNEMONIC_ARGC, encode
 from .table import MAP_CC
 
@@ -45,22 +50,34 @@ def _make(mnemonic: str, pyname: str) -> Callable[..., None]:
         short.__name__ = "short"
         short.__qualname__ = f"{pyname}.short"
         short.__doc__ = f"Emit `{mnemonic}` with a rel8 displacement."
-        insn.short = short  # type: ignore[attr-defined]
+        setattr(insn, "short", short)
     return insn
 
 
 # Python name -> function. The Assembler delegates `a.<name>(...)` here.
 INSNS: dict[str, Callable[..., None]] = {}
 
-for _mn in sorted([*MNEMONIC_ARGC, "mov64", "movabs"]):
-    _py = PY_NAMES.get(_mn, _mn)
-    INSNS[_py] = globals()[_py] = _make(_mn, _py)
-del _mn, _py
+
+def _define() -> None:
+    names = globals()
+    for mn in sorted([*MNEMONIC_ARGC, "mov64", "movabs"]):
+        py = PY_NAMES.get(mn, mn)
+        INSNS[py] = names[py] = _make(mn, py)
+
+
+_define()
 
 # `a.int(3)` is legal syntax, so allow the builtin-shadowing name as a method.
 INSNS["int"] = INSNS["int_"]
 
 __all__ = sorted(k for k in INSNS if k != "int")
+
+
+class X64Assembler(Assembler):
+    """An Assembler for x64. `Assembler("x64")` returns one; its mnemonic
+    methods are typed in the stub."""
+
+    _default_arch = "x64"
 
 
 def nop_fill(n: int) -> bytes:

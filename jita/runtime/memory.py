@@ -1,11 +1,10 @@
 """Executable memory: mapped read-write, filled, then flipped to read-execute."""
 
-from __future__ import annotations
-
 import ctypes
 import mmap
 import sys
 from collections.abc import Callable
+from typing import Self
 
 from ..core.errors import LoadError
 
@@ -86,8 +85,8 @@ class ExecMemory:
             self._map.close()
             self._map = None
 
-    def __enter__(self) -> ExecMemory:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.close()

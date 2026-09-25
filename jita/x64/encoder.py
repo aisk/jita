@@ -47,8 +47,6 @@ Deliberate differences from DynASM:
   error (DynASM only checks the spl/bpl/sil/dil mix).
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
@@ -131,12 +129,21 @@ class _Arg:
 
     def __init__(self, op: Any):
         self.op = op
-        self.opsize = None
-        self.reg = self.xreg = self.xsc = None
+        self.mode = ""
+        self.opsize: str | None = None
+        # The fields below are None when they do not apply to the operand
+        # kind. The encoder reads them only after checking the mode, as
+        # DynASM's Lua code does, so they are typed loosely.
+        self.reg: Any = None
+        self.xreg: Any = None
+        self.xsc: Any = None
         self.disp = 0
         self.riprel = False
-        self.label = self.imm = self.raw = self.target = None
-        self.needrex = None
+        self.label: Any = None
+        self.imm: Any = None
+        self.raw: Any = None
+        self.target: Any = None
+        self.needrex: bool | None = None
         self.high = False
 
 
@@ -425,6 +432,8 @@ class _Encoder:
                 opcode += addin.reg % 8
                 narg = 3
             elif c == "m" or c == "M":  # Encode ModRM/SIB.
+                assert opcode is not None
+                s: int
                 if addin is not None:
                     s = addin.reg
                     opcode -= s & 7  # Undo regno opcode merge.
@@ -449,6 +458,7 @@ class _Encoder:
                 self.putmrmsib(t, s)
                 addin = None
             elif c in _VEXARG:  # Encode using VEX prefix.
+                assert opcode is not None
                 b = opcode & 255
                 opcode >>= 8
                 m = 1

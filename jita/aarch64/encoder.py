@@ -45,8 +45,6 @@ operands DynASM encodes into something other than what was written:
 - An instruction with more operands than its template consumes is an error.
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Sequence
 from typing import Any
@@ -253,9 +251,10 @@ class _Alt:
         if q.kind == "lsl":
             s = 3 if self.rtype == "x" else 2
         else:
-            s = MAP_EXTEND.get(q.kind)
-            if s is None:
+            ext = MAP_EXTEND.get(q.kind)
+            if ext is None:
                 raise self.fail(f"expected an extend (uxtb..sxtx or lsl), got {q}")
+            s = ext
         if q.kind in ("uxtx", "sxtx"):
             first, prev = self.params[0], self.params[self.n - 1]
             if isinstance(prev, Reg) and prev.rt == "w" and isinstance(first, Reg) and first.rt == "x":

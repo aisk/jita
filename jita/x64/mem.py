@@ -7,16 +7,41 @@
     qword[rip + extern]         the 8 byte slot holding an Extern's address
     qword[0x1000]               absolute disp32 (SIB form, no base)
     qword[0x100000000]          absolute 64 bit address, only for mov64
+
+The value of a size prefix is an instance of the matching subclass of
+`MemExpr` (`qword[...]` is a `Mem64`, `ptr[...]` and `rbx + 8` are
+`MemAny`), so type checkers can match memory operands by width.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, replace
+from typing import Self
 
 from ..core.errors import EncodeError
 from ..core.labels import Extern, Label
 from ..core.operand import Operand
 from .regs import Reg, rip
+
+__all__ = [
+    "MemExpr",
+    "MemAny",
+    "Mem8",
+    "Mem16",
+    "Mem32",
+    "Mem64",
+    "Mem80",
+    "Mem128",
+    "Mem256",
+    "Mem",
+    "SizePrefix",
+    "byte",
+    "word",
+    "dword",
+    "qword",
+    "tword",
+    "oword",
+    "yword",
+    "ptr",
+]
 
 _SIZE_NAMES = {1: "byte", 2: "word", 4: "dword", 8: "qword", 10: "tbyte", 16: "xmmword", 32: "ymmword"}
 
@@ -31,6 +56,10 @@ class MemExpr(Operand):
 
     `size` is the access width in bytes, None when untyped (`ptr[...]`).
     Instances are normalized and validated on construction.
+
+    Operands built with the size prefixes and register arithmetic are
+    instances of the subclasses `Mem8` .. `Mem256` and `MemAny`. Equality
+    ignores the subclass: it compares the fields.
     """
 
     base: Reg | None = None
@@ -40,7 +69,7 @@ class MemExpr(Operand):
     label: Label | Extern | str | None = None  # str names a label of the assembler
     size: int | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         base, index, scale = self.base, self.index, self.scale
         if scale not in (1, 2, 4, 8):
             raise EncodeError(f"scale must be 1, 2, 4 or 8, got {scale!r}")
@@ -89,14 +118,25 @@ class MemExpr(Operand):
         elif not -(1 << 31) <= disp < (1 << 31):
             raise EncodeError(f"displacement {disp!r} does not fit in int32")
 
-    def _add_reg(self, reg: Reg, scale: int = 1) -> MemExpr:
+    def _key(self) -> tuple[object, ...]:
+        return (self.base, self.index, self.scale, self.disp, self.label, self.size)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MemExpr):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self) -> int:
+        return hash(self._key())
+
+    def _add_reg(self, reg: Reg, scale: int = 1) -> Self:
         if scale == 1 and self.base is None:
             return replace(self, base=reg)
         if self.index is None:
             return replace(self, index=reg, scale=scale)
         raise EncodeError(f"too many registers in memory operand: {self} + {reg}")
 
-    def __add__(self, other) -> MemExpr:
+    def __add__(self, other: int | Reg | MemExpr | Label | Extern | str) -> Self:
         if isinstance(other, bool):
             return NotImplemented
         if isinstance(other, int):
@@ -120,15 +160,16 @@ class MemExpr(Operand):
             return m + other.disp
         return NotImplemented
 
-    __radd__ = __add__
+    def __radd__(self, other: int | Reg | MemExpr | Label | Extern | str) -> Self:
+        return self.__add__(other)
 
-    def __sub__(self, other) -> MemExpr:
+    def __sub__(self, other: int) -> Self:
         if isinstance(other, int) and not isinstance(other, bool):
             return replace(self, disp=self.disp - other)
         return NotImplemented
 
     def __str__(self) -> str:
-        parts = []
+        parts: list[str] = []
         if self.base is not None:
             parts.append(self.base.name)
         if self.index is not None:
@@ -144,15 +185,90 @@ class MemExpr(Operand):
     __repr__ = __str__
 
 
-class SizePrefix:
-    """`qword[...]` etc. Indexing produces a sized MemExpr."""
+class MemAny(MemExpr):
+    """Memory operand without a size (`ptr[...]`, `rbx + 8`). The size
+    comes from the other operands."""
 
-    __slots__ = ("name", "size")
+    __slots__ = ()
 
-    def __init__(self, name: str, size: int | None):
-        self.name, self.size = name, size
 
-    def __getitem__(self, x) -> MemExpr:
+class Mem8(MemExpr):
+    """Byte memory operand (`byte[...]`)."""
+
+    __slots__ = ()
+
+
+class Mem16(MemExpr):
+    """Word memory operand (`word[...]`)."""
+
+    __slots__ = ()
+
+
+class Mem32(MemExpr):
+    """Dword memory operand (`dword[...]`)."""
+
+    __slots__ = ()
+
+
+class Mem64(MemExpr):
+    """Qword memory operand (`qword[...]`)."""
+
+    __slots__ = ()
+
+
+class Mem80(MemExpr):
+    """Ten byte memory operand (`tword[...]`, x87)."""
+
+    __slots__ = ()
+
+
+class Mem128(MemExpr):
+    """16 byte memory operand (`oword[...]`)."""
+
+    __slots__ = ()
+
+
+class Mem256(MemExpr):
+    """32 byte memory operand (`yword[...]`)."""
+
+    __slots__ = ()
+
+
+# Any memory operand built with a size prefix or register arithmetic, for
+# annotating helpers.
+type Mem = Mem8 | Mem16 | Mem32 | Mem64 | Mem80 | Mem128 | Mem256 | MemAny
+
+_MEM_BY_SIZE: dict[int | None, type[MemExpr]] = {
+    None: MemAny,
+    1: Mem8,
+    2: Mem16,
+    4: Mem32,
+    8: Mem64,
+    10: Mem80,
+    16: Mem128,
+    32: Mem256,
+}
+
+
+def _resized[M: MemExpr](m: MemExpr, cls: type[M], size: int | None) -> M:
+    return cls(m.base, m.index, m.scale, m.disp, m.label, size)
+
+
+def sized(m: MemExpr, size: int | None) -> MemExpr:
+    """`m` with access width `size` (bytes, None for unsized), as an
+    instance of the matching `MemExpr` subclass."""
+    return _resized(m, _MEM_BY_SIZE.get(size, MemExpr), size)
+
+
+class SizePrefix[M: MemExpr]:
+    """`qword[...]` etc. Indexing produces a sized memory operand of class M."""
+
+    __slots__ = ("name", "size", "cls")
+
+    def __init__(self, name: str, size: int | None, cls: type[M]):
+        self.name, self.size, self.cls = name, size, cls
+
+    def __getitem__(self, x: Reg | MemExpr | int) -> M:
         if isinstance(x, MemExpr):
             m = x
         elif isinstance(x, Reg):
@@ -163,19 +279,17 @@ class SizePrefix:
             raise EncodeError(f"{self.name}[label] is not addressable on x64, use {self.name}[rip + label]")
         else:
             raise TypeError(f"{self.name}[...] expects a register, int or memory expression, got {x!r}")
-        return replace(m, size=self.size)
+        return _resized(m, self.cls, self.size)
 
     def __repr__(self) -> str:
         return self.name
 
 
-byte = SizePrefix("byte", 1)
-word = SizePrefix("word", 2)
-dword = SizePrefix("dword", 4)
-qword = SizePrefix("qword", 8)
-tword = SizePrefix("tword", 10)
-oword = SizePrefix("oword", 16)
-yword = SizePrefix("yword", 32)
-ptr = SizePrefix("ptr", None)
-
-__all__ = ["MemExpr", "SizePrefix", "byte", "word", "dword", "qword", "tword", "oword", "yword", "ptr"]
+byte = SizePrefix("byte", 1, Mem8)
+word = SizePrefix("word", 2, Mem16)
+dword = SizePrefix("dword", 4, Mem32)
+qword = SizePrefix("qword", 8, Mem64)
+tword = SizePrefix("tword", 10, Mem80)
+oword = SizePrefix("oword", 16, Mem128)
+yword = SizePrefix("yword", 32, Mem256)
+ptr = SizePrefix("ptr", None, MemAny)

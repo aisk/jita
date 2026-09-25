@@ -15,8 +15,6 @@ or misaligned displacements raise LinkError.
 Absolute data (`a.qword(label)`) uses the core ABS kinds.
 """
 
-from __future__ import annotations
-
 from ..core.errors import LinkError
 from ..core.patch import PatchKind
 

@@ -57,6 +57,7 @@ def main() -> None:
         return
     libc = ctypes.CDLL(None)
     strlen = ctypes.cast(libc.strlen, ctypes.c_void_p).value
+    assert strlen is not None
     mod = a.load(externs={"strlen": strlen})
     total = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t, entry="sum")
     values = list(range(1, 101))

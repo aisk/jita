@@ -917,85 +917,87 @@ MAP_OP: dict[str, str] = {
 # Generated families (mirrors the loops at the end of the map_op section of
 # dasm_x86.lua).
 
-# Arithmetic ops.
-for _name, _n in {"add": 0, "or": 1, "adc": 2, "sbb": 3,
-                  "and": 4, "sub": 5, "xor": 6, "cmp": 7}.items():  # fmt: skip
-    _n8 = _n << 3
-    MAP_OP[_name + "_2"] = (
-        "mr:%02XRm|rm:%02XrM|mI1qdw:81%XmI|mS1qdw:83%XmS|Ri1qdwb:%02Xri|mi1qdwb:81%Xmi"
-        % (1 + _n8, 3 + _n8, _n, _n, 5 + _n8, _n)
-    )
-
-# Shift ops.
-for _name, _n in {"rol": 0, "ror": 1, "rcl": 2, "rcr": 3,
-                  "shl": 4, "shr": 5, "sar": 7, "sal": 4}.items():  # fmt: skip
-    MAP_OP[_name + "_2"] = "m1:D1%Xm|mC1qdwb:D3%Xm|mi:C1%XmU" % (_n, _n, _n)
-
-# Conditional ops.
-for _cc, _n in MAP_CC.items():
-    MAP_OP["j" + _cc + "_1"] = "J.:n0F8%XJ" % _n  # short: 7%X
-    MAP_OP["set" + _cc + "_1"] = "mb:n0F9%X2m" % _n
-    MAP_OP["cmov" + _cc + "_2"] = "rmqdw:0F4%XrM" % _n  # P6+
-
-# FP arithmetic ops.
-for _name, _n in {"add": 0, "mul": 1, "com": 2, "comp": 3,
-                  "sub": 4, "subr": 5, "div": 6, "divr": 7}.items():  # fmt: skip
-    _nc = 0xC0 + (_n << 3)
-    _nr = _nc + (0 if _n < 4 else (8 if _n % 2 == 0 else -8))
-    _fn = "f" + _name
-    MAP_OP[_fn + "_1"] = "ff:D8%02Xr|xd:D8%Xm|xq:nDC%Xm" % (_nc, _n, _n)
-    if _n == 2 or _n == 3:
-        MAP_OP[_fn + "_2"] = "Fff:D8%02XR|Fx2d:D8%XM|Fx2q:nDC%XM" % (_nc, _n, _n)
-    else:
-        MAP_OP[_fn + "_2"] = "Fff:D8%02XR|fFf:DC%02Xr|Fx2d:D8%XM|Fx2q:nDC%XM" % (
-            _nc, _nr, _n, _n,
+def _families() -> None:
+    # Arithmetic ops.
+    for _name, _n in {"add": 0, "or": 1, "adc": 2, "sbb": 3,
+                      "and": 4, "sub": 5, "xor": 6, "cmp": 7}.items():  # fmt: skip
+        _n8 = _n << 3
+        MAP_OP[_name + "_2"] = (
+            "mr:%02XRm|rm:%02XrM|mI1qdw:81%XmI|mS1qdw:83%XmS|Ri1qdwb:%02Xri|mi1qdwb:81%Xmi"
+            % (1 + _n8, 3 + _n8, _n, _n, 5 + _n8, _n)
         )
-        MAP_OP[_fn + "p_1"] = "ff:DE%02Xr" % _nr
-        MAP_OP[_fn + "p_2"] = "fFf:DE%02Xr" % _nr
-    MAP_OP["fi" + _name + "_1"] = "xd:DA%Xm|xw:nDE%Xm" % (_n, _n)
 
-# FP conditional moves.
-for _cc, _n in {"b": 0, "e": 1, "be": 2, "u": 3,
-                "nb": 4, "ne": 5, "nbe": 6, "nu": 7}.items():  # fmt: skip
-    _nc = 0xDAC0 + ((_n & 3) << 3) + ((_n & 4) << 6)
-    MAP_OP["fcmov" + _cc + "_1"] = "ff:%04Xr" % _nc  # P6+
-    MAP_OP["fcmov" + _cc + "_2"] = "Fff:%04XR" % _nc  # P6+
+    # Shift ops.
+    for _name, _n in {"rol": 0, "ror": 1, "rcl": 2, "rcr": 3,
+                      "shl": 4, "shr": 5, "sar": 7, "sal": 4}.items():  # fmt: skip
+        MAP_OP[_name + "_2"] = "m1:D1%Xm|mC1qdwb:D3%Xm|mi:C1%XmU" % (_n, _n, _n)
 
-# SSE / AVX FP arithmetic ops.
-for _name, _n in {"sqrt": 1, "add": 8, "mul": 9,
-                  "sub": 12, "min": 13, "div": 14, "max": 15}.items():  # fmt: skip
-    MAP_OP[_name + "ps_2"] = "rmo:0F5%XrM" % _n
-    MAP_OP[_name + "ss_2"] = "rro:F30F5%XrM|rx/od:" % _n
-    MAP_OP[_name + "pd_2"] = "rmo:660F5%XrM" % _n
-    MAP_OP[_name + "sd_2"] = "rro:F20F5%XrM|rx/oq:" % _n
-    if _n != 1:
-        MAP_OP["v" + _name + "ps_3"] = "rrmoy:0FV5%XrM" % _n
-        MAP_OP["v" + _name + "ss_3"] = "rrro:F30FV5%XrM|rrx/ood:" % _n
-        MAP_OP["v" + _name + "pd_3"] = "rrmoy:660FV5%XrM" % _n
-        MAP_OP["v" + _name + "sd_3"] = "rrro:F20FV5%XrM|rrx/ooq:" % _n
+    # Conditional ops.
+    for _cc, _n in MAP_CC.items():
+        MAP_OP["j" + _cc + "_1"] = "J.:n0F8%XJ" % _n  # short: 7%X
+        MAP_OP["set" + _cc + "_1"] = "mb:n0F9%X2m" % _n
+        MAP_OP["cmov" + _cc + "_2"] = "rmqdw:0F4%XrM" % _n  # P6+
 
-# SSE2 / AVX / AVX2 integer arithmetic ops (66 0F leaf).
-for _name, _n in {
-    "paddb": 0xFC, "paddw": 0xFD, "paddd": 0xFE, "paddq": 0xD4,
-    "paddsb": 0xEC, "paddsw": 0xED, "packssdw": 0x6B,
-    "packsswb": 0x63, "packuswb": 0x67, "paddusb": 0xDC,
-    "paddusw": 0xDD, "pand": 0xDB, "pandn": 0xDF, "pavgb": 0xE0,
-    "pavgw": 0xE3, "pcmpeqb": 0x74, "pcmpeqd": 0x76,
-    "pcmpeqw": 0x75, "pcmpgtb": 0x64, "pcmpgtd": 0x66,
-    "pcmpgtw": 0x65, "pmaddwd": 0xF5, "pmaxsw": 0xEE,
-    "pmaxub": 0xDE, "pminsw": 0xEA, "pminub": 0xDA,
-    "pmulhuw": 0xE4, "pmulhw": 0xE5, "pmullw": 0xD5,
-    "pmuludq": 0xF4, "por": 0xEB, "psadbw": 0xF6, "psubb": 0xF8,
-    "psubw": 0xF9, "psubd": 0xFA, "psubq": 0xFB, "psubsb": 0xE8,
-    "psubsw": 0xE9, "psubusb": 0xD8, "psubusw": 0xD9,
-    "punpckhbw": 0x68, "punpckhwd": 0x69, "punpckhdq": 0x6A,
-    "punpckhqdq": 0x6D, "punpcklbw": 0x60, "punpcklwd": 0x61,
-    "punpckldq": 0x62, "punpcklqdq": 0x6C, "pxor": 0xEF,
-}.items():  # fmt: skip
-    MAP_OP[_name + "_2"] = "rmo:660F%02XrM" % _n
-    MAP_OP["v" + _name + "_3"] = "rrmoy:660FV%02XrM" % _n
+    # FP arithmetic ops.
+    for _name, _n in {"add": 0, "mul": 1, "com": 2, "comp": 3,
+                      "sub": 4, "subr": 5, "div": 6, "divr": 7}.items():  # fmt: skip
+        _nc = 0xC0 + (_n << 3)
+        _nr = _nc + (0 if _n < 4 else (8 if _n % 2 == 0 else -8))
+        _fn = "f" + _name
+        MAP_OP[_fn + "_1"] = "ff:D8%02Xr|xd:D8%Xm|xq:nDC%Xm" % (_nc, _n, _n)
+        if _n == 2 or _n == 3:
+            MAP_OP[_fn + "_2"] = "Fff:D8%02XR|Fx2d:D8%XM|Fx2q:nDC%XM" % (_nc, _n, _n)
+        else:
+            MAP_OP[_fn + "_2"] = "Fff:D8%02XR|fFf:DC%02Xr|Fx2d:D8%XM|Fx2q:nDC%XM" % (
+                _nc, _nr, _n, _n,
+            )
+            MAP_OP[_fn + "p_1"] = "ff:DE%02Xr" % _nr
+            MAP_OP[_fn + "p_2"] = "fFf:DE%02Xr" % _nr
+        MAP_OP["fi" + _name + "_1"] = "xd:DA%Xm|xw:nDE%Xm" % (_n, _n)
 
-del _name, _n, _n8, _cc, _nc, _nr, _fn
+    # FP conditional moves.
+    for _cc, _n in {"b": 0, "e": 1, "be": 2, "u": 3,
+                    "nb": 4, "ne": 5, "nbe": 6, "nu": 7}.items():  # fmt: skip
+        _nc = 0xDAC0 + ((_n & 3) << 3) + ((_n & 4) << 6)
+        MAP_OP["fcmov" + _cc + "_1"] = "ff:%04Xr" % _nc  # P6+
+        MAP_OP["fcmov" + _cc + "_2"] = "Fff:%04XR" % _nc  # P6+
+
+    # SSE / AVX FP arithmetic ops.
+    for _name, _n in {"sqrt": 1, "add": 8, "mul": 9,
+                      "sub": 12, "min": 13, "div": 14, "max": 15}.items():  # fmt: skip
+        MAP_OP[_name + "ps_2"] = "rmo:0F5%XrM" % _n
+        MAP_OP[_name + "ss_2"] = "rro:F30F5%XrM|rx/od:" % _n
+        MAP_OP[_name + "pd_2"] = "rmo:660F5%XrM" % _n
+        MAP_OP[_name + "sd_2"] = "rro:F20F5%XrM|rx/oq:" % _n
+        if _n != 1:
+            MAP_OP["v" + _name + "ps_3"] = "rrmoy:0FV5%XrM" % _n
+            MAP_OP["v" + _name + "ss_3"] = "rrro:F30FV5%XrM|rrx/ood:" % _n
+            MAP_OP["v" + _name + "pd_3"] = "rrmoy:660FV5%XrM" % _n
+            MAP_OP["v" + _name + "sd_3"] = "rrro:F20FV5%XrM|rrx/ooq:" % _n
+
+    # SSE2 / AVX / AVX2 integer arithmetic ops (66 0F leaf).
+    for _name, _n in {
+        "paddb": 0xFC, "paddw": 0xFD, "paddd": 0xFE, "paddq": 0xD4,
+        "paddsb": 0xEC, "paddsw": 0xED, "packssdw": 0x6B,
+        "packsswb": 0x63, "packuswb": 0x67, "paddusb": 0xDC,
+        "paddusw": 0xDD, "pand": 0xDB, "pandn": 0xDF, "pavgb": 0xE0,
+        "pavgw": 0xE3, "pcmpeqb": 0x74, "pcmpeqd": 0x76,
+        "pcmpeqw": 0x75, "pcmpgtb": 0x64, "pcmpgtd": 0x66,
+        "pcmpgtw": 0x65, "pmaddwd": 0xF5, "pmaxsw": 0xEE,
+        "pmaxub": 0xDE, "pminsw": 0xEA, "pminub": 0xDA,
+        "pmulhuw": 0xE4, "pmulhw": 0xE5, "pmullw": 0xD5,
+        "pmuludq": 0xF4, "por": 0xEB, "psadbw": 0xF6, "psubb": 0xF8,
+        "psubw": 0xF9, "psubd": 0xFA, "psubq": 0xFB, "psubsb": 0xE8,
+        "psubsw": 0xE9, "psubusb": 0xD8, "psubusw": 0xD9,
+        "punpckhbw": 0x68, "punpckhwd": 0x69, "punpckhdq": 0x6A,
+        "punpckhqdq": 0x6D, "punpcklbw": 0x60, "punpcklwd": 0x61,
+        "punpckldq": 0x62, "punpcklqdq": 0x6C, "pxor": 0xEF,
+    }.items():  # fmt: skip
+        MAP_OP[_name + "_2"] = "rmo:660F%02XrM" % _n
+        MAP_OP["v" + _name + "_3"] = "rrmoy:660FV%02XrM" % _n
+
+
+_families()
 
 # ------------------------------------------------------------------------------
 # jita extensions, not present in DynASM.

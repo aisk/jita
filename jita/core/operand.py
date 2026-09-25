@@ -1,7 +1,5 @@
 """Architecture neutral operand base classes."""
 
-from __future__ import annotations
-
 
 class Operand:
     """Base class for all operands. Arch packages subclass it.

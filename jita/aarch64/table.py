@@ -321,9 +321,7 @@ MAP_OP: dict[str, str] = {
     # TODO (upstream): SIMD instructions.
 }  # fmt: skip
 
-for _cond, _c in MAP_COND.items():
-    MAP_OP["b" + _cond + "_1"] = "%08x" % (0x54000000 + _c) + "B"
-del _cond, _c
+MAP_OP.update({"b" + _cond + "_1": "%08x" % (0x54000000 + _c) + "B" for _cond, _c in MAP_COND.items()})
 
 # DynASM op_alias entries: alias -> (target template key, operand rewrite).
 #   "bfx":  op4 = op3 + op4 - 1              (sbfx, bfxil, ubfx)

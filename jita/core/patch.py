@@ -1,7 +1,5 @@
 """Patch kinds and patch records. Linking means applying patches."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from .errors import LinkError

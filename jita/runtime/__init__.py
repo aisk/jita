@@ -1,2 +1,2 @@
-from .loader import Module, function, load
+from .loader import JitFunction, LoadedFunction, Module, function, load
 from .memory import ExecMemory

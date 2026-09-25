@@ -1,7 +1,5 @@
 """Section layout and patch application."""
 
-from __future__ import annotations
-
 import mmap
 import weakref
 from collections.abc import Mapping
@@ -41,20 +39,21 @@ class Image:
                 return self.base + self.symbols[label]
             except KeyError:
                 raise LinkError(f"no symbol named {label!r}") from None
-        if not label.bound:
+        sec, offset = label.section, label.offset
+        if sec is None or offset is None:
             raise LinkError(f"label {label} is never bound")
-        name = label.section.name
+        name = sec.name
         size = self.section_sizes.get(name)
         if size is None:
             raise LinkError(f"{label!r}: label bound after linking (section unknown to this image)")
         ref = self.sections.get(name)
-        if ref is None or ref() is not label.section:
+        if ref is None or ref() is not sec:
             raise LinkError(f"{label!r} is bound in a different assembler")
         # A label at the very end of a section (offset == size) is fine if
         # it was bound before linking, so the bind order decides that case.
-        if label.offset > size or label._seq > self.bind_seq:
+        if offset > size or label._seq > self.bind_seq:
             raise LinkError(f"{label!r}: label bound after linking")
-        return self.base + self.section_offsets[name] + label.offset
+        return self.base + self.section_offsets[name] + offset
 
 
 class Layout(NamedTuple):
@@ -105,15 +104,17 @@ def link(asm: Assembler, base: int, externs: Mapping[str, int] | None = None) ->
             where = f"{sec.name}+{p.offset:#x}"
             t = p.target
             if isinstance(t, Label):
-                if not t.bound:
+                tsec, toff = t.section, t.offset
+                if tsec is None or toff is None:
                     raise LinkError(f"label {t} is never bound (referenced at {where})")
-                if asm.sections.get(t.section.name) is not t.section:
+                if asm.sections.get(tsec.name) is not tsec:
                     raise LinkError(f"{t!r} belongs to another assembler (referenced at {where})")
-                target = base + offsets[t.section.name] + t.offset
+                target = base + offsets[tsec.name] + toff
             elif isinstance(t, Extern):
-                target = externs.get(t.name, t.address)
-                if target is None:
+                addr = externs[t.name] if t.name in externs else t.address
+                if addr is None:
                     raise LinkError(f"extern {t.name} has no address (referenced at {where})")
+                target = addr
             else:
                 raise LinkError(f"unresolved {t!r} at {where}")
             try:
@@ -124,7 +125,7 @@ def link(asm: Assembler, base: int, externs: Mapping[str, int] | None = None) ->
     symbols = {
         lbl.name: offsets[lbl.section.name] + lbl.offset
         for lbl in asm.labels
-        if lbl.name is not None
+        if lbl.name is not None and lbl.section is not None and lbl.offset is not None
     }
     sections = {name: weakref.ref(sec) for name, sec in asm.sections.items()}
     sizes = {name: len(sec.buf) for name, sec in asm.sections.items()}

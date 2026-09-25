@@ -1,18 +1,36 @@
 """Loading a linked image into executable memory and calling into it."""
 
-from __future__ import annotations
-
 import ctypes
 import inspect
 import mmap
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Protocol, Self, cast
 
 from ..core.assembler import Assembler
 from ..core.errors import LoadError
 from ..core.labels import Label
 from ..core.link import Image, layout, link
 from .memory import ExecMemory
+
+
+class LoadedFunction(Protocol):
+    """What `Module.function` returns: a ctypes function pointer into
+    loaded code. Its Python signature comes from the ctypes argument types
+    at runtime and is not known statically."""
+
+    module: Module
+    __name__: str
+    __qualname__: str
+    __doc__: str | None
+
+    def __call__(self, *args: Any) -> Any: ...
+
+
+class JitFunction(LoadedFunction, Protocol):
+    """What `Assembler.function` and the `function` decorator return: a
+    `LoadedFunction` that also keeps the assembler it was built from."""
+
+    assembler: Assembler
 
 
 class Module:
@@ -34,14 +52,14 @@ class Module:
         self._check_open()
         return self.image.address(label)
 
-    def function(self, restype: Any, *argtypes: Any, entry: Label | str | None = None) -> Any:
+    def function(self, restype: Any, *argtypes: Any, entry: Label | str | None = None) -> LoadedFunction:
         """ctypes CFUNCTYPE bound to `entry` (default: image base). Its
         `module` attribute is this module."""
         self._check_open()
         addr = self.image.base if entry is None else self.address(entry)
         fn = ctypes.CFUNCTYPE(restype, *argtypes)(addr)
-        fn.module = self
-        return fn
+        setattr(fn, "module", self)
+        return cast(LoadedFunction, fn)
 
     def write(self, where: int | Label | str, data: bytes) -> None:
         """Overwrite loaded bytes at `where`, an offset from the image base
@@ -60,10 +78,10 @@ class Module:
         self.closed = True
         self.memory.close()
 
-    def __enter__(self) -> Module:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.close()
 
 
@@ -92,8 +110,8 @@ def function(
     *argtypes: Any,
     entry: Label | str | None = None,
     externs: Mapping[str, int] | None = None,
-    arch: Any = None,
-) -> Callable[[Callable[..., Any]], Any]:
+    arch: object = None,
+) -> Callable[[Callable[..., object]], JitFunction]:
     """Decorator turning a code generator into a ctypes callable.
 
     The decorated body runs once, at decoration time, inside a fresh
@@ -106,7 +124,7 @@ def function(
     parameters, which is how specialized variants are generated.
     """
 
-    def decorate(body: Callable[..., Any]) -> Any:
+    def decorate(body: Callable[..., object]) -> JitFunction:
         a = Assembler(arch)
         with a:
             if inspect.signature(body).parameters:
