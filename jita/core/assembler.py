@@ -43,6 +43,10 @@ def _host_arch() -> Arch:
         from .. import x64
 
         return x64.ARCH
+    if machine in ("aarch64", "arm64"):
+        from .. import aarch64
+
+        return aarch64.ARCH
     raise JitaError(f"no jita architecture for host machine {machine!r}")
 
 
@@ -72,8 +76,8 @@ class _BoundInsn:
     def __init__(self, fn: Callable[..., Any], asm: Assembler):
         self._fn, self._asm = fn, asm
 
-    def __call__(self, *ops: Any) -> Any:
-        return self._fn(*ops, asm=self._asm)
+    def __call__(self, *ops: Any, **kw: Any) -> Any:
+        return self._fn(*ops, asm=self._asm, **kw)
 
     @property
     def __doc__(self) -> str | None:  # type: ignore[override]
