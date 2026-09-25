@@ -101,9 +101,6 @@ Scalar SSE instructions need an explicitly sized memory operand, e.g.
 - Immediates are range checked by value. `add rax, 0xffffffff` is an
   error instead of quietly becoming `add rax, -1`. `mov r64, imm` switches
   to the 64 bit `movabs` form when the value does not fit in 32 bits.
-- A few fixes where DynASM's x64 output is wrong: `xchg eax, eax` is
-  `87 C0` rather than the `90` nop, and 32 bit address registers (`[eax]`)
-  get the `0x67` prefix.
 - Some instructions DynASM lacks are added: `xadd`, `cmpxchg`,
   `cmpxchg8b`, `cmpxchg16b`, `ud2`, `hlt` and the `movsq`/`cmpsq`/`stosq`/
   `lodsq`/`scasq` string ops. They combine with `lock()` and `rep()`.
