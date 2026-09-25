@@ -150,11 +150,14 @@ assembler into freshly mapped memory and returns a `ctypes` function
 pointer at `entry` (a label or name, default the start of the image).
 `externs` supplies extern addresses (see [Externs](#externs)). The memory
 is released when the callable is garbage collected, so closing it is
-optional (see [Modules](#modules)).
+optional (see [Modules](#modules)). Every `a.function` call loads a
+separate copy of the code: two callables made from the same assembler do
+not share writable data, so for several entries into one copy load once
+with `a.load()` and take each entry with `mod.function`.
 
 The `function` decorator is one more layer on top. The decorated body runs
-once, at decoration time, inside a fresh `Assembler` that is also passed as
-its argument, and the decorated name becomes the callable. Inside a factory
+once, at decoration time, inside a fresh `Assembler`, and the decorated
+name becomes the callable. Inside a factory
 the body closes over the factory's parameters, which is how code is
 specialized at runtime: values become immediates and Python `if`
 statements pick what is emitted.
@@ -166,7 +169,7 @@ from jita.x64 import *
 
 def make_scale(k, bias=0):
     @function(ctypes.c_int64, ctypes.c_int64)
-    def scale(a):                 # int64_t scale(int64_t x): x * k + bias
+    def scale():                  # int64_t scale(int64_t x): x * k + bias
         imul(rax, rdi, k)         # k is an immediate in the code
         if bias:                  # decided while generating, not at runtime
             add(rax, bias)
@@ -179,9 +182,10 @@ print(triple(7), make_scale(10, 1)(7))   # 21 71
 
 `function(restype, *argtypes, entry=None, externs=None, arch=None)` takes
 the same arguments as `a.function`, plus `arch` for the assembler it
-creates (default: the host). The body needs the assembler argument for
-`a.pc`, `a.section`, `a.align` and the other methods, and ignores it
-otherwise. The body's `__name__`, `__qualname__` and `__doc__` are copied
+creates (default: the host). A body declared with one parameter, `def
+f(a)`, receives the assembler for `a.pc`, `a.section`, `a.align` and the
+other methods; a body without parameters is called with none. The body's
+`__name__`, `__qualname__` and `__doc__` are copied
 onto the callable. A decorated function at module level generates its code
 when the module is imported.
 
@@ -231,9 +235,6 @@ garbage collected, or earlier by `mod.close()` or by leaving a
 `with a.load() as mod:` block. Calling a function of a closed module crashes
 the process.
 
-Every `a.function` call loads a fresh copy, so two functions made from the
-same assembler have separate memory and do not share writable data; load
-once with `a.load()` and use `mod.function` for each entry when they must.
 A raw address taken from a function, such as
 `ctypes.cast(fn, ctypes.c_void_p).value`, a pointer stored in C, or an
 extern passed to another module, does not keep the module alive, so keep

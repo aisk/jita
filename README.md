@@ -13,7 +13,7 @@ from jita import function
 from jita.x64 import *
 
 @function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-def sum_array(a):                 # the body is a generator that runs once
+def sum_array():                  # the body is a generator that runs once
     xor(eax, eax)                 # int64_t sum_array(int64_t *p, size_t n)
     test(rsi, rsi)
     jz("done")

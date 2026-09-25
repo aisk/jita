@@ -10,7 +10,7 @@ import pytest
 
 import jita.aarch64 as aarch64
 import jita.x64 as x64
-from jita import Assembler, Extern, function
+from jita import Assembler, Extern, current, function
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 
@@ -143,7 +143,7 @@ def test_decorator_assembler_methods():
 
 def test_decorator_entry_and_externs():
     @function(ctypes.c_long, ctypes.c_long, entry="main", externs={"labs": LABS})
-    def f(a):
+    def f():
         ud2()
         label("main")
         sub(rsp, 8)
@@ -156,7 +156,7 @@ def test_decorator_entry_and_externs():
 
 def make_scaler(k: int, bias: int):
     @function(ctypes.c_int64, ctypes.c_int64)
-    def scale(a):
+    def scale():
         imul(rax, rdi, k)
         if bias:
             add(rax, bias)
@@ -211,7 +211,7 @@ def test_gc_releases_memory():
 
 def test_decorated_function_gc_releases_memory():
     @function(ctypes.c_int)
-    def f(a):
+    def f():
         mov(eax, 1)
         ret()
 
@@ -222,3 +222,22 @@ def test_decorated_function_gc_releases_memory():
     gc.collect()
     assert mod_ref() is None
     assert mem_ref() is None
+
+
+def test_decorator_body_with_and_without_parameter():
+    seen = []
+
+    @function(ctypes.c_int)
+    def with_a(a):
+        seen.append(a)
+        mov(eax, 1)
+        ret()
+
+    @function(ctypes.c_int)
+    def without_a():
+        seen.append(current())
+        mov(eax, 2)
+        ret()
+
+    assert with_a() == 1 and without_a() == 2
+    assert seen == [with_a.assembler, without_a.assembler]

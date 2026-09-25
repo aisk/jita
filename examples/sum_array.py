@@ -25,7 +25,7 @@ def load_next(dst, ptr):
 
 
 @function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-def sum_array(a):
+def sum_array():
     # int64_t sum_array(const int64_t *p /* rdi */, size_t n /* rsi */)
     xor(eax, eax)  # acc = 0 (writing eax clears the upper half of rax)
     test(rsi, rsi)

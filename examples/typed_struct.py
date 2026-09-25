@@ -37,7 +37,7 @@ node = typed(rdi, Node)
 
 
 @function(ctypes.c_int64, ctypes.POINTER(Node))
-def sum_list(a):
+def sum_list():
     # int64_t sum_list(Node *node)
     xor(eax, eax)  # grand total
     label("node")

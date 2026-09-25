@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
 import mmap
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -92,22 +93,26 @@ def function(
     entry: Label | str | None = None,
     externs: Mapping[str, int] | None = None,
     arch: Any = None,
-) -> Callable[[Callable[[Assembler], Any]], Any]:
+) -> Callable[[Callable[..., Any]], Any]:
     """Decorator turning a code generator into a ctypes callable.
 
     The decorated body runs once, at decoration time, inside a fresh
-    `Assembler(arch)` entered as the current context, and receives that
-    assembler as its only argument. The result is
+    `Assembler(arch)` entered as the current context. A body that takes a
+    parameter receives that assembler (for `a.pc`, `a.section`, ...); a
+    body without parameters is called with none. The result is
     `a.function(restype, *argtypes, entry=entry, externs=externs)`, with
     the body's `__name__`, `__qualname__` and `__doc__` copied onto it.
     Inside a factory function the body closes over the factory's
     parameters, which is how specialized variants are generated.
     """
 
-    def decorate(body: Callable[[Assembler], Any]) -> Any:
+    def decorate(body: Callable[..., Any]) -> Any:
         a = Assembler(arch)
         with a:
-            body(a)
+            if inspect.signature(body).parameters:
+                body(a)
+            else:
+                body()
         fn = a.function(restype, *argtypes, entry=entry, externs=externs)
         for attr in ("__name__", "__qualname__", "__doc__"):
             try:

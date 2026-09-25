@@ -373,7 +373,11 @@ class Assembler:
         """Load into a fresh Module and return a ctypes callable bound to
         `entry` (default: image base). The callable keeps the Module alive
         through its `module` attribute and this assembler through
-        `assembler`; the memory is released when it is garbage collected."""
+        `assembler`; the memory is released when it is garbage collected.
+
+        Every call loads a separate copy of the code: two callables made
+        this way do not share writable data. For several entries into one
+        copy use `load()` and `Module.function`."""
         from ..runtime.loader import load
 
         fn = load(self, externs).function(restype, *argtypes, entry=entry)

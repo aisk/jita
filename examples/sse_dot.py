@@ -18,7 +18,7 @@ DOUBLE_P = ctypes.POINTER(ctypes.c_double)
 
 
 @function(ctypes.c_double, DOUBLE_P, DOUBLE_P, ctypes.c_size_t)
-def dot(a):
+def dot():
     # double dot(const double *x /* rdi */, const double *y /* rsi */, size_t n /* rdx */)
     pairs, tail, tail_loop, done = Label(), Label(), Label(), Label()
     xorpd(xmm0, xmm0)  # packed accumulator {0, 0}

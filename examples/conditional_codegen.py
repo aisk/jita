@@ -47,7 +47,7 @@ def make_reduce(op: str, clamp: int | None = None, unroll: int = 1):
     assert unroll in (1, 2)
 
     @function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
-    def reduce(a):
+    def reduce():
         # int64_t reduce(const int64_t *p /* rdi */, size_t n /* rsi */), n % unroll == 0
         loop, done = Label(), Label()
         if op == "add":
