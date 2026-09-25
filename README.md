@@ -22,7 +22,8 @@ uv run python examples/sum_array.py
 
 The `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, calls into libc, an SSE2 dot
-product and code specialized by Python-level parameters.
+product, code specialized by Python-level parameters and a function
+assembled from fragments with holes.
 
 ## Example
 
@@ -67,6 +68,7 @@ with build().load() as mod:
 | data | `a.byte() a.word() a.dword() a.qword(1, lbl, ext) a.bytes(b"..") a.align(16) a.space(n)` | `.byte .dword .qword .align` |
 | short branch | `jmp.short(lbl)`, `jz.short(lbl)` | automatic |
 | keyword mnemonics | `and_ or_ not_ int_` | `and or not int` |
+| encode once, fill in later | `Fragment()` with `Hole.gp64("r")`, `Hole.imm32("k")`, `Hole.label("l")`; `frag.instantiate(r=rbx, k=5, l=lbl)` | `Rq(r)`, runtime `imm`, `=>l` |
 | methods instead of the context | `a.mov(rax, 1)`, `a.label("x")`, `a.jmp.short(lbl)` | |
 
 Macros are plain Python functions that emit instructions, and `.if` is a
@@ -91,6 +93,59 @@ address into a register first: `mov(rax, Extern("f")); call(rax)`.
 
 Scalar SSE instructions need an explicitly sized memory operand, e.g.
 `mulsd(xmm0, qword[rip + k])`; `ptr[...]` does not pick the size there.
+
+## Fragments
+
+`gp64(n)` picks a register while Python generates the code, and the
+instruction is encoded again every time. A `Fragment` is encoded once with
+`Hole` operands and then instantiated as often as needed; an instance copies
+the bytes and patches in the registers, immediates and labels, without
+running the encoder:
+
+```python
+from jita import Assembler, Fragment, Hole, Label
+from jita.x64 import *
+
+dst, src, k, exit_ = Hole.gp64("dst"), Hole.gp64("src"), Hole.imm32("k"), Hole.label("exit")
+
+frag = Fragment()
+with frag:
+    mov(dst, qword[src + 8])
+    add(dst, k)
+    jz(exit_)
+    label("again")            # local: every instance gets its own label
+    dec(dst)
+    jnz.short("again")
+
+a = Assembler()
+with a:
+    done = Label()
+    frag.instantiate(dst=rbx, src=rdi, k=1, exit=done)
+    inst = frag.instantiate(dst=r12, src=rsp, k=-5, exit=done)
+    label(done)
+    ret()
+
+inst.labels["again"]          # the label this instance's "again" became
+len(frag)                     # 23: every instance has the same length
+```
+
+Holes are typed: `Hole.gp8/gp16/gp32/gp64`, `Hole.xmm`, `Hole.ymm` for
+registers, `Hole.imm8/imm16/imm32/imm64` for immediates and `Hole.label`
+for anything a Label is accepted as (branch targets, `[rip + l]`,
+`mov r64, l`, data directives). gp64 holes also work as the base or index
+of a memory operand. The value for each hole is passed by name to
+`instantiate`, which checks it: a register of the right class and size, an
+int in the range the instruction accepts, a Label or a label name.
+
+Since an instance must have the same length for any register, an
+instruction with a register hole is always encoded in its general form: a
+REX prefix is always present (so `ah`..`bh` cannot be combined with holes),
+a base register hole always gets a SIB byte and a displacement, a hole in
+the r/m or index field uses the 3 byte VEX prefix, and accumulator short
+forms are never used. An immediate hole picks the form by its declared
+size, not its value: `add(r, Hole.imm8(..))` is the sign-extended imm8 form
+and `mov(eax, Hole.imm8(..))` is an error. `examples/fragments.py` builds a
+function out of several instances.
 
 ## Differences from DynASM
 
