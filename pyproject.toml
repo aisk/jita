@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Runtime x64 code generation at the abstraction level of DynASM"
 readme = "README.md"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
 
 [dependency-groups]
