@@ -144,7 +144,12 @@ for anything a Label is accepted as (branch targets, `[rip + l]`,
 `mov r64, l`, data directives). gp64 holes also work as the base or index
 of a memory operand. The value for each hole is passed by name to
 `instantiate`, which checks it: a register of the right class and size, an
-int in the range the instruction accepts, a Label or a label name.
+int in the range the instruction accepts, a Label, a label name or an
+Extern. For an Extern, `jmp(l)` and `mov(rax, l)` refer to the extern
+itself and `[rip + l]` to its pointer slot. A fragment can be instantiated
+into another fragment, and a hole of the outer fragment is a valid value
+for an inner hole of the same type, which leaves that field open until the
+outer fragment is instantiated.
 
 Since an instance must have the same length for any register, an
 instruction with a register hole is always encoded in its general form: a

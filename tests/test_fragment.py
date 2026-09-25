@@ -346,6 +346,199 @@ def test_nested_fragment():
     assert a.cur.buf.hex() == "4883c001" "4983c002" "4883e903"
 
 
+def _inner_for_nesting() -> Fragment:
+    d, s, i, k, lbl, n = (Hole.gp64("d"), Hole.gp64("s"), Hole.gp64("i"), Hole.imm32("k"),
+                          Hole.label("l"), Hole.imm8("n"))  # fmt: skip
+    return frag_of(
+        lambda: (
+            add(d, qword[s + i * 8 + 8]),  # noqa: F405
+            mov(d, k),  # noqa: F405
+            jz(lbl),  # noqa: F405
+            lea(d, ptr[rip + lbl + 4]),  # noqa: F405
+            shl(d, n),  # noqa: F405
+            vaddsd(xmm1, xmm2, qword[s + 16]),  # noqa: F405
+        )
+    )
+
+
+DD, II, KK, LL = Hole.gp64("dd"), Hole.gp64("ii"), Hole.imm32("kk"), Hole.label("ll")
+
+
+def _outer_for_nesting(inner: Fragment) -> Fragment:
+    outer = Fragment(x64)
+    with outer:
+        nop()  # noqa: F405
+        inner.instantiate(d=DD, s=rbx, i=II, k=KK, l=LL, n=3)  # noqa: F405
+        ret()  # noqa: F405
+    return outer
+
+
+def _direct_for_nesting(d, i, k, lbl) -> None:
+    nop()  # noqa: F405
+    add(d, qword[rbx + i * 8 + 8])  # noqa: F405
+    mov(d, k)  # noqa: F405
+    jz(lbl)  # noqa: F405
+    lea(d, ptr[rip + lbl + 4])  # noqa: F405
+    shl(d, 3)  # noqa: F405
+    vaddsd(xmm1, xmm2, qword[rbx + 16])  # noqa: F405
+    ret()  # noqa: F405
+
+
+def test_nested_fragment_passes_holes_through():
+    inner = _inner_for_nesting()
+    outer = _outer_for_nesting(inner)
+    assert outer.holes == {"dd": DD, "ii": II, "kk": KK, "ll": LL}
+    # The inner hole fields are fields of the outer holes, same kinds.
+    passed = {inner.holes[n]: h for n, h in (("d", DD), ("i", II), ("k", KK), ("l", LL))}
+    inner_kinds = [
+        (p.offset + 1, p.kind, passed[p.target], p.addend) for p in inner.cur.patches if p.target in passed
+    ]
+    outer_kinds = [(p.offset, p.kind, p.target, p.addend) for p in outer.cur.patches]
+    key = lambda t: (t[0], t[1].name)  # noqa: E731
+    assert sorted(outer_kinds, key=key) == sorted(inner_kinds, key=key)
+    # The same bytes as instantiating the inner fragment directly.
+    for d, i, k in [(rax, rcx, 1), (r9, r12, -5), (rsp, r15, 0x7FFFFFFF), (r13, rbp, 7)]:  # noqa: F405
+        got, want = Assembler(x64), Assembler(x64)
+        with got:
+            outer.instantiate(dd=d, ii=i, kk=k, ll="end")
+            label("end")
+        with want:
+            nop()  # noqa: F405
+            inner.instantiate(d=d, s=rbx, i=i, k=k, l="end", n=3)  # noqa: F405
+            ret()  # noqa: F405
+            label("end")
+        assert got.link().data == want.link().data
+        assert listing(got) == listing(want)
+    with pytest.raises(EncodeError, match="rsp"):
+        outer.instantiate(Assembler(x64), dd=rax, ii=rsp, kk=0, ll=Label())  # noqa: F405
+
+
+@requires_oracle
+def test_nested_fragment_against_objdump():
+    outer = _outer_for_nesting(_inner_for_nesting())
+    for d, i, k in [(rax, rcx, 1), (r9, r12, -5), (r12, r13, 0x1234), (r15, rbp, 7)]:  # noqa: F405
+        got, want = Assembler(x64), Assembler(x64)
+        with got:
+            outer.instantiate(dd=d, ii=i, kk=k, ll="end")
+            label("end")
+        with want:
+            _direct_for_nesting(d, i, k, "end")
+            label("end")
+        # Branch and rip-relative targets print as addresses, which differ
+        # with the instruction lengths; compare everything else.
+        def text(asm):
+            lines = [canon(line) for line in disassemble(asm.link().data)]
+            return [ln for ln in lines if not ln.startswith("j") and "rip" not in ln]
+
+        assert text(got) == text(want)
+
+
+def test_nested_fragment_hole_type_mismatch():
+    inner = _inner_for_nesting()
+    ok = dict(d=DD, s=rbx, i=II, k=KK, l=LL, n=3)  # noqa: F405
+    for name, bad in [
+        ("d", Hole.gp32("e32")),
+        ("d", Hole.xmm("x")),
+        ("k", Hole.imm8("k8")),
+        ("k", Hole.imm64("k64")),
+        ("l", Hole.gp64("g")),
+        ("d", Hole.label("l2")),
+        ("n", Hole.imm32("n32")),
+    ]:
+        outer = Fragment(x64)
+        with pytest.raises(TypeError, match="hole types differ"):
+            inner.instantiate(outer, **{**ok, name: bad})
+        assert outer.cur.buf == b"" and outer.holes == {}
+    # Holes only pass through into another Fragment.
+    with pytest.raises(EncodeError, match="another Fragment"):
+        inner.instantiate(Assembler(x64), **ok)
+    # The outer fragment cannot end up with two holes of one name.
+    outer = Fragment(x64)
+    outer.mov(Hole.gp64("dd"), rax)  # noqa: F405
+    size = len(outer)
+    with pytest.raises(EncodeError, match="two different holes"):
+        inner.instantiate(outer, **ok)
+    assert len(outer) == size and set(outer.holes) == {"dd"}
+
+
+def test_label_hole_with_extern_value():
+    ext = Extern("strlen")
+    frag = Fragment(x64)
+    with frag:
+        jmp(L)  # noqa: F405
+        call(L)  # noqa: F405
+        mov(rax, L)  # noqa: F405
+        call(qword[rip + L])  # noqa: F405
+        mov(rcx, qword[rip + L])  # noqa: F405
+        cmp(dword[rip + L], 5)  # noqa: F405
+        frag.qword(L)
+    a = Assembler(x64)
+    inst = frag.instantiate(a, lbl=ext)
+    assert inst.values == {"lbl": ext} and L not in inst.labels
+    slot = a.extern_slots["strlen"]
+    code = a.sections["code"].patches
+    assert [(p.kind, p.target) for p in code] == [
+        (REL32, ext), (REL32, ext), (ABS64, ext), (REL32, slot), (REL32, slot), (REL32, slot), (ABS64, ext),
+    ]  # fmt: skip
+    b = Assembler(x64)
+    with b:
+        jmp(ext)  # noqa: F405
+        call(ext)  # noqa: F405
+        mov(rax, ext)  # noqa: F405
+        call(qword[rip + ext])  # noqa: F405
+        mov(rcx, qword[rip + ext])  # noqa: F405
+        cmp(dword[rip + ext], 5)  # noqa: F405
+        b.qword(ext)
+    externs = {"strlen": 0x2000}
+    assert a.link(0x1000, externs).data == b.link(0x1000, externs).data
+    assert "cmp dword ptr [rip+strlen@slot], 5" in listing(a)
+
+
+def test_label_hole_with_extern_value_rejects_displacement():
+    frag = frag_of(lambda: (nop(), mov(rax, qword[rip + L + 8])))  # noqa: F405
+    a = Assembler(x64)
+    with pytest.raises(EncodeError, match="pointer slot"):
+        frag.instantiate(a, lbl=Extern("strlen"))
+    assert a.cur.buf == b"" and a.extern_slots == {}
+    frag.instantiate(a, lbl=a.label())  # a Label with a displacement is fine
+
+
+def test_extern_value_through_nested_fragments():
+    ext = Extern("strlen")
+    inner = frag_of(lambda: (call(qword[rip + L]), jmp(L)))  # noqa: F405
+    direct = Assembler(x64)
+    with direct:
+        call(qword[rip + ext])  # noqa: F405
+        jmp(ext)  # noqa: F405
+    want = direct.link(0x1000, {"strlen": 0x9000}).data
+    # The Extern given to the inner fragment, or to an outer hole.
+    via_value, via_hole = Fragment(x64), Fragment(x64)
+    inner.instantiate(via_value, lbl=ext)
+    inner.instantiate(via_hole, lbl=LL)
+    assert via_value.extern_slots == {} and via_hole.holes == {"ll": LL}
+    for outer, vals in ((via_value, {}), (via_hole, {"ll": ext})):
+        a = Assembler(x64)
+        outer.instantiate(a, **vals)
+        assert list(a.extern_slots) == ["strlen"]
+        assert a.link(0x1000, {"strlen": 0x9000}).data == want
+
+
+@needs_x64_host
+def test_exec_call_through_label_hole_extern():
+    s = Hole.gp64("s")
+    frag = frag_of(lambda: (mov(rdi, s), call(qword[rip + L])))  # noqa: F405
+    a = Assembler(x64)
+    with a:
+        sub(rsp, 8)  # noqa: F405
+        frag.instantiate(s=rsi, lbl=Extern("strlen"))  # noqa: F405
+        add(rsp, 8)  # noqa: F405
+        ret()  # noqa: F405
+    addr = ctypes.cast(ctypes.CDLL(None).strlen, ctypes.c_void_p).value
+    with a.load(externs={"strlen": addr}) as mod:
+        fn = mod.function(ctypes.c_int64, ctypes.c_void_p, ctypes.c_char_p)
+        assert fn(None, b"holes") == 5
+
+
 # -- alignment ---------------------------------------------------------------
 
 

@@ -9,6 +9,7 @@ and appends the result to another assembler; the encoder does not run again.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from typing import Any
 
@@ -16,7 +17,7 @@ from .assembler import Assembler, _check_pow2, current
 from .errors import EncodeError, JitaError, LinkError
 from .labels import Extern, Label
 from .operand import Hole, Imm, Register
-from .patch import Patch, PatchKind
+from .patch import REL32, SLOT_REL32, Patch, PatchKind, SlotKind
 from .section import Section
 
 __all__ = ["Fragment", "Instance"]
@@ -28,7 +29,7 @@ class Instance:
 
     `labels` maps the fragment's local labels to the fresh labels of this
     instance: named ones by name, anonymous ones by the original Label
-    object. Label holes map from the Hole to the Label they were given.
+    object. Label holes given a Label map from the Hole to that Label.
     `values` holds the hole values by name (label names resolved to Labels).
     `start` and `end` delimit the instance's bytes in `section`; `end` does
     not change if more code is added to the fragment afterwards.
@@ -53,13 +54,23 @@ class _Plan:
         self.data = bytes(sec.buf)
         # Register and immediate hole fields, applied to the copied bytes.
         self.fields: list[tuple[int, PatchKind, Hole]] = []
+        # Label and extern references: (offset, 1, (kind, target, addend,
+        # disp)). `disp` is the displacement of a `[rip + hole + disp]`
+        # memory operand for a label hole used that way, else None; an
+        # Extern given for such a hole means the extern's pointer slot.
         relocs = []
+        starts = [lo for lo, *_ in sec.insns]
         for p in sec.patches:
             t = p.target
             if isinstance(t, Hole) and t.kind != "label":
                 self.fields.append((p.offset, p.kind, t))
-            else:
-                relocs.append((p.offset, 1, (p.kind, t, p.addend)))
+                continue
+            disp = None
+            if isinstance(t, Hole) and (i := bisect_right(starts, p.offset) - 1) >= 0:
+                lo, hi, _, ops = sec.insns[i]
+                if p.offset < hi:
+                    disp = next((op.disp for op in ops if getattr(op, "label", None) is t), None)
+            relocs.append((p.offset, 1, (p.kind, t, p.addend, disp)))
         # Labels bound inside the fragment are local to each instance.
         self.local: list[Label] = list(frag.labels)
         binds = [(lbl.offset, 0, lbl) for lbl in self.local]
@@ -161,6 +172,14 @@ class Fragment(Assembler):
         return plan
 
     def _value(self, asm: Assembler, hole: Hole, v: Any) -> Any:
+        if isinstance(v, Hole):
+            # A hole of the fragment being built is passed through: the
+            # fields of `hole` become fields of `v` in the outer fragment.
+            if not isinstance(asm, Fragment):
+                raise EncodeError(f"{hole!r} = {v!r}: holes can only be passed on to another Fragment")
+            if (v.kind, v.regclass, v.size) != (hole.kind, hole.regclass, hole.size):
+                raise TypeError(f"{hole!r} cannot be filled with {v!r}, the hole types differ")
+            return v
         if hole.kind == "reg":
             if (
                 isinstance(v, Register)
@@ -184,9 +203,11 @@ class Fragment(Assembler):
             if v.owner is not None and v.owner is not asm:
                 raise LinkError(f"{hole!r}: {v!r} belongs to another assembler")
             return v
+        if isinstance(v, Extern):
+            return v
         if isinstance(v, str) and v:
             return v  # resolved with asm.named once every value is checked
-        raise EncodeError(f"{hole!r} needs a Label or a label name, got {v!r}")
+        raise EncodeError(f"{hole!r} needs a Label, a label name or an Extern, got {v!r}")
 
     def _outside(self, asm: Assembler, lbl: Label) -> Label:
         """The label of `asm` that a label not bound in the fragment means."""
@@ -204,7 +225,15 @@ class Fragment(Assembler):
         """Emit a copy of the fragment into `asm` (default: the current
         assembler) with every hole replaced by the value given for its name:
         a register of the hole's class and size, an int in range, or a
-        Label or label name. Returns the Instance."""
+        Label, label name or Extern. An Extern given for a label hole used
+        as `[rip + hole]` means the extern's pointer slot, like
+        `[rip + ext]`.
+
+        When `asm` is another Fragment, a value may also be one of its
+        holes of the same type (same kind, register class and size): the
+        fields of the inner hole are then recorded as fields of that hole
+        and filled when the outer fragment is instantiated. Returns the
+        Instance."""
         if asm is None:
             asm = current()
         if asm is self:
@@ -221,9 +250,16 @@ class Fragment(Assembler):
         plan = self._compiled()
 
         # Everything that can fail happens before anything is emitted.
+        passed = [v for v in vals.values() if isinstance(v, Hole)]
+        if passed:
+            _check_hole_names(asm, passed)
         buf = bytearray(plan.data)
+        deferred: list[tuple[int, PatchKind, Hole]] = []
         for off, kind, hole in plan.fields:
             v = vals[hole]
+            if isinstance(v, Hole):
+                deferred.append((off, kind, v))
+                continue
             try:
                 kind.apply(buf, off, v.code if hole.kind == "reg" else v, 0)
             except LinkError as e:
@@ -254,7 +290,13 @@ class Fragment(Assembler):
 
         for _, order, item in plan.events:
             if order:
-                target(item[1])
+                _, t, _, disp = item
+                v = target(t)
+                if disp and isinstance(v, Extern):
+                    raise EncodeError(
+                        f"{t!r} = {v!r}: [rip + {v.name}] addresses the extern's pointer slot, "
+                        f"it cannot have a displacement ({disp:+d})"
+                    )
 
         # Emit bytes, bind the fresh labels and re-emit label patches through
         # emit_patch, in offset order.
@@ -264,19 +306,26 @@ class Fragment(Assembler):
             # The instance is aligned relative to the outer fragment's start,
             # so the outer fragment inherits the requirement.
             asm.alignment = max(asm.alignment, self.alignment)
+        for h in passed:
+            asm.accept_hole(h)
         pos = 0
         for off, order, item in plan.events:
             if off > pos:
                 asm.emit(buf[pos:off])
                 pos = off
             if order:
-                kind, t, addend = item
-                asm.emit_patch(kind, targets[t], addend)
+                kind, t, addend, disp = item
+                v = targets[t]
+                if disp is not None and isinstance(v, Extern):
+                    kind = _slot_kind(kind)
+                asm.emit_patch(kind, v, addend)
                 pos = off + kind.size
             else:
                 asm.bind(fresh[item])
         if pos < len(buf):
             asm.emit(buf[pos:])
+        for off, kind, h in deferred:
+            asm.add_patch(start + off, kind, h)
 
         def subst(op: Any) -> Any:
             if isinstance(op, (Hole, Label)):
@@ -297,7 +346,22 @@ class Fragment(Assembler):
         for lbl in plan.local:
             labels[lbl.name if lbl.name is not None else lbl] = fresh[lbl]
         for h, v in vals.items():
-            if h.kind == "label":
+            if h.kind == "label" and isinstance(v, Label):
                 labels[h] = v
         named = {n: vals[h] for n, h in self.holes.items() if n in values}
         return Instance(self, sec, start, start + len(buf), labels, named)
+
+
+def _slot_kind(kind: PatchKind) -> PatchKind:
+    """The slot request kind for a rip-relative reference of `kind`."""
+    return SLOT_REL32 if kind is REL32 else SlotKind(kind)
+
+
+def _check_hole_names(asm: Assembler, holes: list[Hole]) -> None:
+    """Reject hole values that would give the outer fragment two different
+    holes with one name, before anything is recorded."""
+    known = dict(getattr(asm, "holes", {}))
+    for h in holes:
+        other = known.setdefault(h.name, h)
+        if other is not h:
+            raise EncodeError(f"two different holes are named {h.name!r} in {asm!r}")
