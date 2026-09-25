@@ -610,3 +610,58 @@ def test_exec_all_base_registers():
         with a.load() as mod:
             f = mod.function(ctypes.c_int64, ctypes.c_void_p)
             assert f(ctypes.addressof(arr)) == 1234, base
+
+
+def test_extern_slot_inside_fragment_is_created_by_the_instantiating_assembler():
+    """`qword[rip + ext]` in a fragment stays a slot request until an
+    instance is emitted; each target assembler then gets its own slot."""
+    strlen = Extern("strlen")
+    p = Hole.gp64("p")
+    frag = Fragment(x64)
+    with frag:
+        mov(rdi, p)
+        call(qword[rip + strlen])
+    assert list(frag.sections) == ["code"]
+    a, b = Assembler(x64), Assembler(x64)
+    with a:
+        frag.instantiate(p=rbx)
+        frag.instantiate(p=rsi)
+    with b:
+        frag.instantiate(p=rcx)
+    for asm in (a, b):
+        assert list(asm.extern_slots) == ["strlen"]
+        assert list(asm.sections) == ["code", "externs"]
+        slot = asm.extern_slots["strlen"]
+        assert [(pt.kind, pt.target) for pt in asm.sections["code"].patches if pt.kind is REL32] == [
+            (REL32, slot)
+        ] * len(asm.sections["code"].insns[1::2])
+    img = a.link(0x1000, externs={"strlen": 0x7000})
+    slot_addr = img.section_offsets["externs"] + 0x1000
+    assert img.data[img.section_offsets["externs"] :][:8] == (0x7000).to_bytes(8, "little")
+    # call rel32 at code+0x3 (after `mov rdi, rbx`, 3 bytes) points at the slot
+    rel = int.from_bytes(img.data[5:9], "little", signed=True)
+    assert 0x1000 + 9 + rel == slot_addr
+
+
+@needs_x64_host
+def test_exec_extern_slot_inside_fragment():
+    strlen = Extern("strlen")
+    p = Hole.gp64("p")
+    frag = Fragment(x64)
+    with frag:
+        mov(rdi, p)
+        call(qword[rip + strlen])
+    a = Assembler(x64)
+    with a:
+        push(rbx)
+        mov(rbx, rsi)
+        frag.instantiate(p=rdi)
+        mov(rsi, rax)
+        frag.instantiate(p=rbx)
+        add(rax, rsi)
+        pop(rbx)
+        ret()
+    addr = ctypes.cast(ctypes.CDLL(None).strlen, ctypes.c_void_p).value
+    with a.load(externs={"strlen": addr}) as mod:
+        fn = mod.function(ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p)
+        assert fn(b"abc", b"hello") == 8
