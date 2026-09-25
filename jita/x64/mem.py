@@ -3,6 +3,7 @@
     qword[rbx + rcx*8 + 16]     size-tagged memory operand
     ptr[rbx]                    size taken from the other operand
     qword[rip + label]          rip-relative to a Label (REL32 patch)
+    qword[rip + "name"]         same, naming a label of the assembler
     qword[0x1000]               absolute disp32 (SIB form, no base)
     qword[0x100000000]          absolute 64 bit address, only for mov64
 """
@@ -31,7 +32,7 @@ class MemExpr(Operand):
     index: Reg | None = None
     scale: int = 1
     disp: int = 0
-    label: Label | None = None
+    label: Label | str | None = None  # str names a label of the assembler
     size: int | None = None
 
     def __post_init__(self):
@@ -88,7 +89,7 @@ class MemExpr(Operand):
             return NotImplemented
         if isinstance(other, int):
             return replace(self, disp=self.disp + other)
-        if isinstance(other, Label):
+        if isinstance(other, (Label, str)):
             if self.label is not None:
                 raise EncodeError("memory operand can reference only one label")
             return replace(self, label=other)
@@ -146,7 +147,7 @@ class SizePrefix:
             m = MemExpr(base=x)
         elif isinstance(x, int) and not isinstance(x, bool):
             m = MemExpr(disp=x)
-        elif isinstance(x, Label):
+        elif isinstance(x, (Label, str)):
             raise EncodeError(f"{self.name}[label] is not addressable on x64, use {self.name}[rip + label]")
         else:
             raise TypeError(f"{self.name}[...] expects a register, int or memory expression, got {x!r}")

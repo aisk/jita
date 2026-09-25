@@ -60,7 +60,8 @@ with build().load() as mod:
 | memory | `qword[rbx + rcx*8 + 8]` | `qword [rbx+rcx*8+8]` |
 | size from the other operand | `ptr[rbx]`, `mov(rax, ptr[rbx])` | `[rbx]` |
 | rip-relative | `qword[rip + lbl]`, `lea(rax, ptr[rip + lbl])` | `[->lbl]` |
-| label | `lbl = Label()`, `lbl.here()`, `a.label("name")` | `->name:`, `1:` |
+| label | `lbl = Label()`, `lbl.here()`, `a.label("name")` | `1:`, `->name:` |
+| label by name | `jz("done")`, `qword[rip + "tbl"]`, `a.qword("tbl")`, then `a.label("done")` | `->done`, `->tbl` |
 | indexed (pc) labels | `a.pc[i]`, `a.pc[i].here()` | `=>i` |
 | external symbol | `Extern("strlen")`, address given to `load(externs=...)` | `extern strlen` |
 | sections | `with a.section("data"): ...`, `a.section("vars", writable=True)` | `.section` |
@@ -70,10 +71,14 @@ with build().load() as mod:
 | methods instead of the context | `a.mov(rax, 1)`, `a.jmp.short(lbl)` | |
 
 Macros are plain Python functions that emit instructions, and `.if` is a
-Python `if` in the generator. Named labels become symbols of the loaded
-module (`mod.function(..., entry="name")`, `mod.address("name")`), and a
-Label or Extern used as a `mov r64` immediate or a `qword` value becomes a
-64 bit absolute address. `jita.tools.listing.listing(a)` prints the
+Python `if` in the generator. Wherever a Label is accepted a string names
+a label of the assembler, so `jz("done")` can come before `a.label("done")`
+and the same name always means the same label. Use `Label()` objects for
+labels inside macros, so that calling the macro twice does not clash.
+Named labels become symbols of the loaded module
+(`mod.function(..., entry="name")`, `mod.address("name")`), and a Label or
+Extern used as a `mov r64` immediate or a `qword` value becomes a 64 bit
+absolute address. `jita.tools.listing.listing(a)` prints the
 generated code one instruction per line with its bytes and relocations.
 
 Loaded code is read-execute, and so are sections by default. Data you want

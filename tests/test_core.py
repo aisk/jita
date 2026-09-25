@@ -403,3 +403,61 @@ def test_star_exports():
 
     assert not [n for n in names if isinstance(ns[n], types.ModuleType)]
     assert not names & {"arch", "assembler", "errors", "label", "operand", "patch", "section"}
+
+
+def test_named_label_forward_reference():
+    a = Assembler(x64)
+    fwd = a.named("done")
+    assert not fwd.bound and fwd.owner is a
+    assert a.named("done") is fwd  # same name, same label
+    jmp32(a, fwd)
+    a.bytes(b"\x90")
+    assert a.label("done") is fwd  # binds the forward reference
+    img = a.link(0x1000)
+    assert img.address("done") == 0x1006
+    assert img.data[:5] == bytes.fromhex("e901000000")
+    assert a.named("done") is fwd  # bound labels are found by name too
+
+
+def test_named_label_in_data_directives():
+    a = Assembler(x64)
+    a.qword("tbl")
+    a.dword("tbl", 7)
+    a.label("tbl")
+    img = a.link(0x1000)
+    assert img.data[:8] == (0x1010).to_bytes(8, "little")
+    assert img.data[8:12] == (0x1010).to_bytes(4, "little")
+
+
+def test_named_label_bound_by_here():
+    a = Assembler(x64)
+    a.qword("x")
+    with a:
+        a.bytes(b"\x90")
+        a.named("x").here()
+    assert a.link(0).address("x") == 9
+
+
+def test_named_label_never_bound():
+    a = Assembler(x64)
+    a.qword("nowhere")
+    with pytest.raises(LinkError, match="nowhere is never bound"):
+        a.link()
+
+
+def test_named_label_rejects_binding_a_different_object():
+    a = Assembler(x64)
+    a.qword("x")
+    with pytest.raises(LinkError, match="already referenced by name"):
+        a.bind(Label("x"))
+    a.label("x")  # the forward reference itself still binds fine
+    with pytest.raises(LinkError, match="duplicate label name"):
+        a.label("x")
+
+
+def test_named_label_rejects_bad_names():
+    a = Assembler(x64)
+    with pytest.raises(TypeError):
+        a.named("")
+    with pytest.raises(TypeError):
+        a.named(3)  # type: ignore[arg-type]

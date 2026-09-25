@@ -932,3 +932,91 @@ def test_exec_rip_relative_with_immediates():
             a.qword(0)
     with a.load() as mod:
         assert mod.function(ctypes.c_uint64)() == 0x01DE9ABC12345678
+
+
+def test_string_label_operands():
+    """A str operand names a label of the assembler, DynASM's `->name`."""
+    a = Assembler(x64)
+    with a:
+        jz("done")
+        jmp.short("done")
+        mov(rax, "tbl")
+        lea(rcx, ptr[rip + "tbl"])
+        mov(rdx, qword[rip + "tbl" + 8])
+        call("done")
+        a.label("done")
+        ret()
+        with a.section("data"):
+            a.label("tbl")
+            a.qword("done", 1)
+    code = a.sections["code"]
+    kinds = [(p.kind, p.target.name) for p in code.patches]
+    assert kinds == [
+        (REL32, "done"), (REL8, "done"), (ABS64, "tbl"), (REL32, "tbl"),
+        (REL32, "tbl"), (REL32, "done"),
+    ]
+    img = a.link(0x1000)
+    done, tbl = img.address("done"), img.address("tbl")
+    b = img.data
+    assert int.from_bytes(b[2:6], "little", signed=True) == done - 0x1006
+    assert b[7] == done - 0x1008
+    assert int.from_bytes(b[10:18], "little") == tbl
+    data = img.section_offsets["data"]
+    assert int.from_bytes(b[data : data + 8], "little") == done  # a.qword("done")
+
+
+def test_string_label_identity_with_label_object():
+    a = Assembler(x64)
+    with a:
+        jmp("loop")
+        loop = a.named("loop")
+        assert loop is a.named("loop")
+        a.label("loop")
+        jmp(loop)
+    assert [p.target for p in a.sections["code"].patches] == [loop, loop]
+
+
+def test_string_label_error_messages():
+    a = Assembler(x64)
+    with a:
+        jmp("x")
+    with pytest.raises(LinkError, match="label x is never bound"):
+        a.link()
+    with pytest.raises(EncodeError, match=r"use qword\[rip \+ label\]"):
+        qword["x"]
+
+
+@requires_oracle
+def test_string_label_matches_object_label_bytes():
+    a, b = Assembler(x64), Assembler(x64)
+    with a:
+        jz("end"); add(rax, qword[rip + "k"]); jmp.short("end")
+        a.label("k"); a.qword(0)
+        a.label("end"); ret()
+    with b:
+        end, k = Label("end"), Label("k")
+        jz(end); add(rax, qword[rip + k]); jmp.short(end)
+        k.here(); b.qword(0)
+        end.here(); ret()
+    assert a.link().data == b.link().data
+
+
+@needs_x64_host
+def test_exec_string_labels():
+    a = Assembler(x64)
+    with a:
+        xor(eax, eax)
+        x64.test(rsi, rsi)
+        jz("done")
+        a.label("loop")
+        add(rax, qword[rdi])
+        add(rdi, 8)
+        dec(rsi)
+        jnz("loop")
+        a.label("done")
+        ret()
+    with a.load() as mod:
+        fn = mod.function(ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t)
+        arr = (ctypes.c_int64 * 4)(1, 2, 3, 4)
+        assert fn(arr, 4) == 10
+        assert fn(arr, 0) == 0

@@ -60,6 +60,7 @@ accordingly.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from ..core.errors import EncodeError
@@ -705,13 +706,22 @@ def _is_eax(op: Any) -> bool:
     return isinstance(op, Reg) and op.kind == "gp" and op.size == 4 and op.code == 0
 
 
+def _resolve_names(asm: Any, op: Any) -> Any:
+    """Turn string label references into the assembler's named labels."""
+    if isinstance(op, str):
+        return asm.named(op)
+    if isinstance(op, MemExpr) and isinstance(op.label, str):
+        return replace(op, label=asm.named(op.label))
+    return op
+
+
 def encode(asm: Any, mnemonic: str, ops: Sequence[Any], short: bool = False) -> None:
     """Encode one instruction and emit it into `asm`.
 
     `mnemonic` is the table name ("and", not "and_"). `short` requests the
     rel8 form of a jmp/jcc to a label. Nothing is emitted if encoding fails.
     """
-    ops = tuple(ops)
+    ops = tuple(_resolve_names(asm, op) for op in ops)
     if mnemonic in ("mov64", "movabs"):
         enc = _encode_mov64(ops, mnemonic)
     elif mnemonic == "mov" and len(ops) == 2 and _is_mov64_imm(ops[0], ops[1]):

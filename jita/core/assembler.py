@@ -94,6 +94,7 @@ class Assembler:
         self.pc = PcLabels(self)
         self.labels: list[Label] = []  # bound labels, in bind order
         self._symbols: dict[str, Label] = {}
+        self._named: dict[str, Label] = {}  # referenced by name, not bound yet
 
     def __repr__(self) -> str:
         return f"<Assembler {self.arch.name} [{', '.join(self.sections)}]>"
@@ -170,6 +171,13 @@ class Assembler:
         if label.name is not None:
             if label.name in self._symbols:
                 raise LinkError(f"duplicate label name {label.name!r}")
+            forward = self._named.pop(label.name, None)
+            if forward is not None and forward is not label:
+                self._named[label.name] = forward
+                raise LinkError(
+                    f"label {label.name!r} is already referenced by name, "
+                    f"bind it with a.label({label.name!r}) or a.named({label.name!r}).here()"
+                )
             self._symbols[label.name] = label
         label.section, label.offset = self.cur, self.cur.pos()
         label._seq = next(_bind_seq)
@@ -177,33 +185,52 @@ class Assembler:
         return label
 
     def label(self, name: str | None = None) -> Label:
-        """Create a label and bind it here."""
+        """Create a label and bind it here. A name that was referenced
+        earlier as a string binds that forward reference."""
+        if name is not None and name in self._named:
+            return self.bind(self._named[name])
         return self.bind(Label(name, owner=self))
+
+    def named(self, name: str) -> Label:
+        """The label called `name`, created unbound if it does not exist yet.
+
+        This is what a string operand means: `jz("done")` is
+        `jz(a.named("done"))`. The label is bound later by `a.label("done")`
+        or `a.named("done").here()`. Linking fails if it never is.
+        """
+        if not isinstance(name, str) or not name:
+            raise TypeError(f"label name must be a non-empty str, got {name!r}")
+        lbl = self._symbols.get(name) or self._named.get(name)
+        if lbl is None:
+            lbl = self._named[name] = Label(name, owner=self)
+        return lbl
 
     # data directives
 
     def _data(self, size: int, vals: tuple) -> None:
         for v in vals:
+            if isinstance(v, str):
+                v = self.named(v)
             if isinstance(v, (Label, Extern)):
                 self.emit_patch(ABS_BY_SIZE[size], v)
                 continue
             if not isinstance(v, int) or isinstance(v, bool):
-                raise TypeError(f"data value must be an int, Label or Extern, got {v!r}")
+                raise TypeError(f"data value must be an int, str, Label or Extern, got {v!r}")
             bits = size * 8
             if not -(1 << (bits - 1)) <= v < (1 << bits):
                 raise EncodeError(f"value {v:#x} does not fit in {size} bytes")
             self.emit((v & ((1 << bits) - 1)).to_bytes(size, "little"))
 
-    def byte(self, *vals: int | Label | Extern) -> None:
+    def byte(self, *vals: int | str | Label | Extern) -> None:
         self._data(1, vals)
 
-    def word(self, *vals: int | Label | Extern) -> None:
+    def word(self, *vals: int | str | Label | Extern) -> None:
         self._data(2, vals)
 
-    def dword(self, *vals: int | Label | Extern) -> None:
+    def dword(self, *vals: int | str | Label | Extern) -> None:
         self._data(4, vals)
 
-    def qword(self, *vals: int | Label | Extern) -> None:
+    def qword(self, *vals: int | str | Label | Extern) -> None:
         self._data(8, vals)
 
     def bytes(self, data: bytes) -> None:

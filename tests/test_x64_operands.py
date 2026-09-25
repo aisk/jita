@@ -92,8 +92,8 @@ def test_mem_validation():
         byte[al]
     with pytest.raises(EncodeError):
         qword[xmm3]
-    with pytest.raises(TypeError):
-        qword["rax"]
+    with pytest.raises(EncodeError, match=r"use qword\[rip \+ label\]"):
+        qword["rax"]  # a str names a label, and labels need a rip base
     with pytest.raises(EncodeError, match="VSIB"):
         qword[rax + xmm3 * 4]
     with pytest.raises(EncodeError, match="VSIB"):
