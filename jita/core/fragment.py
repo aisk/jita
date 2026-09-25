@@ -136,16 +136,17 @@ class Fragment(Assembler):
                 raise TypeError(f"expected a Hole, got {h!r}")
             self.accept_hole(h)
 
-    def emit_patch(self, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
+    def add_patch(self, offset: int, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
         # A kind wrapping another one with an Extern target is a request for
         # an extern pointer slot. The fragment keeps it unchanged; the
         # assembler it is instantiated into creates the slot.
         if getattr(kind, "field", None) is not None and isinstance(target, Extern):
             sec = self.cur
-            sec.patches.append(Patch(sec.pos(), kind, target, addend))
-            sec.buf += bytes(kind.size)
+            if not 0 <= offset <= sec.pos() - kind.size:
+                raise ValueError(f"patch at {offset} is outside the emitted bytes")
+            sec.patches.append(Patch(offset, kind, target, addend))
             return
-        super().emit_patch(kind, target, addend)
+        super().add_patch(offset, kind, target, addend)
 
     def extern_slot(self, extern: Extern) -> Label:
         # A fragment has no sections of its own to hold slots, and a slot
@@ -298,8 +299,10 @@ class Fragment(Assembler):
                         f"it cannot have a displacement ({disp:+d})"
                     )
 
-        # Emit bytes, bind the fresh labels and re-emit label patches through
-        # emit_patch, in offset order.
+        # Emit bytes, bind the fresh labels and record the label patches
+        # again with add_patch over the copied bytes (which hold the rest of
+        # the instruction a patch kind may OR its field into), in offset
+        # order.
         sec = asm.cur
         sec.align = max(sec.align, self.alignment)
         if isinstance(asm, Fragment):
@@ -318,8 +321,10 @@ class Fragment(Assembler):
                 v = targets[t]
                 if disp is not None and isinstance(v, Extern):
                     kind = _slot_kind(kind)
-                asm.emit_patch(kind, v, addend)
-                pos = off + kind.size
+                end = off + kind.size
+                asm.emit(buf[pos:end])
+                asm.add_patch(start + off, kind, v, addend)
+                pos = end
             else:
                 asm.bind(fresh[item])
         if pos < len(buf):

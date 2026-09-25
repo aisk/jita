@@ -622,14 +622,11 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], name: str | None = None)
             # jita: the braa/brab modifier register 31 is sp, not xzr.
             raise _error(mnemonic, ops, "the modifier register cannot be xzr (register 31 means sp here)")
         start = asm.pos()
-        data = word.to_bytes(4, "little")
-        if alt.fixup is None:
-            asm.emit(data)
-        else:
-            # The patch reserves the word; the kind ORs its field into it.
+        asm.emit(word.to_bytes(4, "little"))
+        if alt.fixup is not None:
+            # The kind ORs its field into the word at link time.
             kind, target = alt.fixup
-            asm.emit_patch(kind, target)
-            asm.cur.buf[start : start + 4] = data
+            asm.add_patch(start, kind, target)
         asm.note_insn(start, name or mnemonic, tuple(ops))
         return
     assert best is not None

@@ -157,31 +157,39 @@ class Assembler:
         self.cur.buf += data
 
     def emit_patch(self, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
-        """Reserve kind.size zero bytes at pos and record the Patch.
+        """Reserve kind.size zero bytes at pos and record the Patch over
+        them with `add_patch`. Nothing stays emitted if the patch is
+        rejected."""
+        sec = self.cur
+        start = sec.pos()
+        sec.buf += bytes(kind.size)
+        try:
+            self.add_patch(start, kind, target, addend)
+        except BaseException:
+            del sec.buf[start:]
+            raise
+
+    def add_patch(self, offset: int, kind: PatchKind, target: Label | Extern | Hole, addend: int = 0) -> None:
+        """Record a patch over bytes already emitted in the current section,
+        without reserving new ones. The bytes there are the template the
+        kind writes into: zero for x86 style fields, an instruction word
+        whose field a kind ORs in (aarch64), or a register field that a
+        `jita.core.patch.BitsKind` replaces.
 
         A `SlotKind` patch to an Extern (`qword[rip + ext]`) is recorded as
         `kind.field` to the extern's pointer slot, see `extern_slot`.
         """
         if not isinstance(target, (Label, Extern, Hole)):
             raise TypeError(f"patch target must be a Label, Extern or Hole, got {target!r}")
-        if isinstance(target, Hole):
-            self.accept_hole(target)
-        if isinstance(kind, SlotKind):
-            if not isinstance(target, Extern):
-                raise TypeError(f"{kind.name} patch target must be an Extern, got {target!r}")
-            kind, target = kind.field, self.extern_slot(target)
-        sec = self.cur
-        sec.patches.append(Patch(sec.pos(), kind, target, addend))
-        sec.buf += bytes(kind.size)
-
-    def add_patch(self, offset: int, kind: PatchKind, target: Hole, addend: int = 0) -> None:
-        """Record a patch over bytes already emitted in the current section,
-        without reserving new ones. Used for the register fields of
-        instructions that contain holes (see `jita.core.patch.BitsKind`)."""
+        if isinstance(kind, SlotKind) and not isinstance(target, Extern):
+            raise TypeError(f"{kind.name} patch target must be an Extern, got {target!r}")
         sec = self.cur
         if not 0 <= offset <= sec.pos() - kind.size:
             raise ValueError(f"patch at {offset} is outside the emitted bytes")
-        self.accept_hole(target)
+        if isinstance(target, Hole):
+            self.accept_hole(target)
+        if isinstance(kind, SlotKind):
+            kind, target = kind.field, self.extern_slot(target)
         sec.patches.append(Patch(offset, kind, target, addend))
 
     def accept_hole(self, hole: Hole) -> None:

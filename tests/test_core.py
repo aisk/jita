@@ -3,6 +3,7 @@ import pytest
 import jita.x64 as x64
 from jita import Assembler, Extern, JitaError, Label, LinkError, current, label
 from jita.core import ABS32, REL8, REL32, EncodeError, Hole
+from jita.core.patch import SLOT_REL32
 from jita.tools.listing import listing
 
 
@@ -165,6 +166,27 @@ def test_hole_only_in_fragments():
     assert a.cur.buf == b"" and a.cur.patches == []
     with pytest.raises(TypeError):
         a.emit_patch(ABS32, 5)
+
+
+def test_add_patch_is_the_primitive():
+    # emit_patch reserves the bytes and rolls them back when add_patch
+    # rejects the patch; add_patch records over bytes already emitted.
+    a = Assembler(x64)
+    with pytest.raises(TypeError):
+        a.emit_patch(ABS32, 5)
+    with pytest.raises(TypeError):
+        a.emit_patch(SLOT_REL32, Label())
+    assert a.cur.buf == b"" and a.cur.patches == []
+    a.emit(b"\x90" * 8)
+    with pytest.raises(ValueError, match="outside"):
+        a.add_patch(6, ABS32, Label())
+    lbl = a.label("t")
+    a.add_patch(4, ABS32, lbl)
+    a.add_patch(0, SLOT_REL32, Extern("e"))
+    assert a.cur.patches[0].target is lbl
+    p = a.cur.patches[1]
+    assert p.kind is REL32 and p.target is a.extern_slots["e"]
+    assert a.cur.buf == b"\x90" * 8  # nothing reserved
 
 
 def test_label_from_other_assembler():

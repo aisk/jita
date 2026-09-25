@@ -143,9 +143,9 @@ class SlotKind(PatchKind):
     """A reference to the pointer slot of an Extern, not to the extern.
 
     Encoders emit it for memory operands such as `qword[rip + ext]`.
-    `Assembler.emit_patch` never records it: it replaces the Extern target
-    with the assembler's slot label (`Assembler.extern_slot`) and the kind
-    with `field`, the kind that actually writes the reference. So
+    `Assembler.add_patch` (and so `emit_patch`) never records it: it
+    replaces the Extern target with the assembler's slot label
+    (`Assembler.extern_slot`) and the kind with `field`, the kind that actually writes the reference. So
     `call(ext)` stays a direct REL32 to the extern while `call(qword[rip +
     ext])` becomes a REL32 to an 8 byte slot holding its address.
     """
