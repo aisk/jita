@@ -225,8 +225,11 @@ def test_errors():
     class Long(ctypes.Structure):
         _fields_ = [("ld", ctypes.c_longdouble)]
 
-    with pytest.raises(EncodeError, match="long double"):
-        typed(rax, Long).ld
+    if ctypes.c_longdouble is ctypes.c_double:  # macOS arm64, Windows
+        assert typed(rax, Long).ld == qword[rax]
+    else:
+        with pytest.raises(EncodeError, match="long double"):
+            typed(rax, Long).ld
     with pytest.raises(AttributeError, match="fields: x, y, tag, next, v"):
         typed(rax, Point).z
     with pytest.raises(AttributeError):

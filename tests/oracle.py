@@ -44,6 +44,7 @@ Known limitations:
 
 import glob
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -72,9 +73,30 @@ class OracleError(RuntimeError):
     """Raised when the external assembler/disassembler pipeline fails."""
 
 
-AS = "/usr/bin/as"
-OBJCOPY = "/usr/bin/objcopy"
-OBJDUMP = "/usr/bin/objdump"
+
+
+def _is_gnu(path: str) -> bool:
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return b"GNU" in out
+
+
+def _x64_binutils() -> tuple[str, str, str]:
+    """(as, objcopy, objdump) for x64: the native GNU tools on an x86 host,
+    otherwise the x86_64-linux-gnu cross tools; empty strings if neither."""
+    if platform.machine().lower() in ("x86_64", "amd64"):
+        native = ("/usr/bin/as", "/usr/bin/objcopy", "/usr/bin/objdump")
+        if all(os.access(t, os.X_OK) for t in native) and _is_gnu(native[0]):
+            return native
+    cross = [shutil.which(f"x86_64-linux-gnu-{n}") for n in ("as", "objcopy", "objdump")]
+    if all(cross):
+        return (cross[0] or "", cross[1] or "", cross[2] or "")
+    return ("", "", "")
+
+
+AS, OBJCOPY, OBJDUMP = _x64_binutils()
 
 # text -> assembled bytes, so repeated calls with the same source (common in
 # parametrized tests) don't keep shelling out to `as`/`objcopy`.
@@ -95,8 +117,8 @@ _LABEL_RE = re.compile(r"^[\w.$]+:$")
 
 
 def available() -> bool:
-    """Return True if `as`, `objcopy` and `objdump` are present and executable."""
-    return all(os.access(path, os.X_OK) for path in (AS, OBJCOPY, OBJDUMP))
+    """Return True if GNU `as`, `objcopy` and `objdump` for x64 were found."""
+    return bool(AS)
 
 
 requires_oracle = pytest.mark.skipif(

@@ -1,0 +1,28 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Install cross binutils for the other architecture's oracle
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if [ "$(uname -m)" = x86_64 ]; then
+            sudo apt-get install -y binutils-aarch64-linux-gnu
+          else
+            sudo apt-get install -y binutils-x86-64-linux-gnu
+          fi
+      - run: uv sync
+      - run: uv run pytest -q -ra
