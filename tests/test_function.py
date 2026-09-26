@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 I64P = ctypes.POINTER(ctypes.c_int64)
-LABS = ctypes.cast(ctypes.CDLL(None).labs, ctypes.c_void_p).value or 0
+LABS = 0 if platform.system() == "Windows" else ctypes.cast(ctypes.CDLL(None).labs, ctypes.c_void_p).value or 0
 
 
 def gen_sum():
