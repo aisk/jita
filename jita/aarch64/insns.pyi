@@ -184,13 +184,13 @@ class Aarch64Assembler(Assembler):
         """Emit `autibsp` (0 operands)."""
     b: _b_method
     def bal(self, op0: _Target, /) -> None:
-        """Emit `bal` (1 operands)."""
+        """Emit `b.al` (1 operands)."""
     def bcc(self, op0: _Target, /) -> None:
-        """Emit `bcc` (1 operands)."""
+        """Emit `b.cc` (1 operands)."""
     def bcs(self, op0: _Target, /) -> None:
-        """Emit `bcs` (1 operands)."""
+        """Emit `b.cs` (1 operands)."""
     def beq(self, op0: _Target, /) -> None:
-        """Emit `beq` (1 operands)."""
+        """Emit `b.eq` (1 operands)."""
     @overload
     def bfi(self, op0: W, op1: W, op2: _Imm, op3: _Imm, /) -> None:
         """Emit `bfi` (4 operands)."""
@@ -207,13 +207,13 @@ class Aarch64Assembler(Assembler):
     @overload
     def bfxil(self, op0: X, op1: X, op2: _Imm, op3: _Imm, /) -> None: ...
     def bge(self, op0: _Target, /) -> None:
-        """Emit `bge` (1 operands)."""
+        """Emit `b.ge` (1 operands)."""
     def bgt(self, op0: _Target, /) -> None:
-        """Emit `bgt` (1 operands)."""
+        """Emit `b.gt` (1 operands)."""
     def bhi(self, op0: _Target, /) -> None:
-        """Emit `bhi` (1 operands)."""
+        """Emit `b.hi` (1 operands)."""
     def bhs(self, op0: _Target, /) -> None:
-        """Emit `bhs` (1 operands)."""
+        """Emit `b.hs` (1 operands)."""
     @overload
     def bic(self, op0: W, op1: W, op2: W | RegMod[W], /) -> None:
         """Emit `bic` (3 or 4 operands)."""
@@ -235,9 +235,9 @@ class Aarch64Assembler(Assembler):
     def bl(self, op0: _Target, /) -> None:
         """Emit `bl` (1 operands)."""
     def ble(self, op0: _Target, /) -> None:
-        """Emit `ble` (1 operands)."""
+        """Emit `b.le` (1 operands)."""
     def blo(self, op0: _Target, /) -> None:
-        """Emit `blo` (1 operands)."""
+        """Emit `b.lo` (1 operands)."""
     def blr(self, op0: X, /) -> None:
         """Emit `blr` (1 operands)."""
     def blraaz(self, op0: X, /) -> None:
@@ -245,15 +245,15 @@ class Aarch64Assembler(Assembler):
     def blrabz(self, op0: X, /) -> None:
         """Emit `blrabz` (1 operands)."""
     def bls(self, op0: _Target, /) -> None:
-        """Emit `bls` (1 operands)."""
+        """Emit `b.ls` (1 operands)."""
     def blt(self, op0: _Target, /) -> None:
-        """Emit `blt` (1 operands)."""
+        """Emit `b.lt` (1 operands)."""
     def bmi(self, op0: _Target, /) -> None:
-        """Emit `bmi` (1 operands)."""
+        """Emit `b.mi` (1 operands)."""
     def bne(self, op0: _Target, /) -> None:
-        """Emit `bne` (1 operands)."""
+        """Emit `b.ne` (1 operands)."""
     def bpl(self, op0: _Target, /) -> None:
-        """Emit `bpl` (1 operands)."""
+        """Emit `b.pl` (1 operands)."""
     def br(self, op0: X, /) -> None:
         """Emit `br` (1 operands)."""
     def braa(self, op0: X, op1: X, /) -> None:
@@ -272,9 +272,9 @@ class Aarch64Assembler(Assembler):
     def bti(self, op0: _Bti, /) -> None:
         """Emit `bti` (1 operands)."""
     def bvc(self, op0: _Target, /) -> None:
-        """Emit `bvc` (1 operands)."""
+        """Emit `b.vc` (1 operands)."""
     def bvs(self, op0: _Target, /) -> None:
-        """Emit `bvs` (1 operands)."""
+        """Emit `b.vs` (1 operands)."""
     def cbnz(self, op0: X | W, op1: _Target, /) -> None:
         """Emit `cbnz` (2 operands)."""
     def cbz(self, op0: X | W, op1: _Target, /) -> None:
@@ -952,13 +952,13 @@ def autibsp(*, asm: Assembler | None = None) -> None:
     """Emit `autibsp` (0 operands)."""
 b: _b
 def bal(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bal` (1 operands)."""
+    """Emit `b.al` (1 operands)."""
 def bcc(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bcc` (1 operands)."""
+    """Emit `b.cc` (1 operands)."""
 def bcs(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bcs` (1 operands)."""
+    """Emit `b.cs` (1 operands)."""
 def beq(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `beq` (1 operands)."""
+    """Emit `b.eq` (1 operands)."""
 @overload
 def bfi(op0: W, op1: W, op2: _Imm, op3: _Imm, /, *, asm: Assembler | None = None) -> None:
     """Emit `bfi` (4 operands)."""
@@ -975,13 +975,13 @@ def bfxil(op0: W, op1: W, op2: _Imm, op3: _Imm, /, *, asm: Assembler | None = No
 @overload
 def bfxil(op0: X, op1: X, op2: _Imm, op3: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 def bge(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bge` (1 operands)."""
+    """Emit `b.ge` (1 operands)."""
 def bgt(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bgt` (1 operands)."""
+    """Emit `b.gt` (1 operands)."""
 def bhi(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bhi` (1 operands)."""
+    """Emit `b.hi` (1 operands)."""
 def bhs(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bhs` (1 operands)."""
+    """Emit `b.hs` (1 operands)."""
 @overload
 def bic(op0: W, op1: W, op2: W | RegMod[W], /, *, asm: Assembler | None = None) -> None:
     """Emit `bic` (3 or 4 operands)."""
@@ -1003,9 +1003,9 @@ def bics(op0: X, op1: X, op2: X, op3: Mod, /, *, asm: Assembler | None = None) -
 def bl(op0: _Target, /, *, asm: Assembler | None = None) -> None:
     """Emit `bl` (1 operands)."""
 def ble(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `ble` (1 operands)."""
+    """Emit `b.le` (1 operands)."""
 def blo(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `blo` (1 operands)."""
+    """Emit `b.lo` (1 operands)."""
 def blr(op0: X, /, *, asm: Assembler | None = None) -> None:
     """Emit `blr` (1 operands)."""
 def blraaz(op0: X, /, *, asm: Assembler | None = None) -> None:
@@ -1013,15 +1013,15 @@ def blraaz(op0: X, /, *, asm: Assembler | None = None) -> None:
 def blrabz(op0: X, /, *, asm: Assembler | None = None) -> None:
     """Emit `blrabz` (1 operands)."""
 def bls(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bls` (1 operands)."""
+    """Emit `b.ls` (1 operands)."""
 def blt(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `blt` (1 operands)."""
+    """Emit `b.lt` (1 operands)."""
 def bmi(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bmi` (1 operands)."""
+    """Emit `b.mi` (1 operands)."""
 def bne(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bne` (1 operands)."""
+    """Emit `b.ne` (1 operands)."""
 def bpl(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bpl` (1 operands)."""
+    """Emit `b.pl` (1 operands)."""
 def br(op0: X, /, *, asm: Assembler | None = None) -> None:
     """Emit `br` (1 operands)."""
 def braa(op0: X, op1: X, /, *, asm: Assembler | None = None) -> None:
@@ -1040,9 +1040,9 @@ def brk(op0: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 def bti(op0: _Bti, /, *, asm: Assembler | None = None) -> None:
     """Emit `bti` (1 operands)."""
 def bvc(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bvc` (1 operands)."""
+    """Emit `b.vc` (1 operands)."""
 def bvs(op0: _Target, /, *, asm: Assembler | None = None) -> None:
-    """Emit `bvs` (1 operands)."""
+    """Emit `b.vs` (1 operands)."""
 def cbnz(op0: X | W, op1: _Target, /, *, asm: Assembler | None = None) -> None:
     """Emit `cbnz` (2 operands)."""
 def cbz(op0: X | W, op1: _Target, /, *, asm: Assembler | None = None) -> None:

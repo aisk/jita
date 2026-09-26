@@ -15,7 +15,8 @@ class _Names:
     `name@slot`; other anonymous labels are numbered .L1, .L2, ... in bind
     order, so the output does not depend on object ids."""
 
-    def __init__(self, labels: list[Label], slots: dict[str, Label] | None = None):
+    def __init__(self, labels: list[Label], slots: dict[str, Label] | None = None, imm_prefix: str = ""):
+        self._imm = imm_prefix
         self._anon: dict[int, str] = {}
         self._slots = 0
         for name, lbl in (slots or {}).items():
@@ -36,7 +37,9 @@ class _Names:
         if isinstance(op, Label):
             return self(op)
         if isinstance(op, int) and not isinstance(op, bool):
-            return str(op) if -256 < op < 256 else hex(op)
+            return self._imm + (str(op) if -256 < op < 256 else hex(op))
+        if isinstance(op, float):
+            return self._imm + str(op)
         label = getattr(op, "label", None)  # rip-relative memory operand
         text = str(op)
         if isinstance(label, Label):
@@ -60,7 +63,7 @@ def listing(asm: Assembler, image: Image | None = None, width: int = 8) -> str:
     Instructions are printed one per line with their operands and patches.
     Data is printed `width` bytes per row. Instructions longer than `width`
     bytes continue on the following rows."""
-    names = _Names(asm.labels, getattr(asm, "extern_slots", None))
+    names = _Names(asm.labels, getattr(asm, "extern_slots", None), asm.arch.imm_prefix)
     labels: dict[int, dict[int, list[Label]]] = {}
     for lbl in asm.labels:
         if lbl.offset is not None:  # asm.labels holds bound labels only

@@ -15,6 +15,8 @@ class Arch:
 
     name: str = "abstract"
     pointer_size: int = 8
+    # Written before immediate operands in listings: "#" for `add x0, x1, #5`.
+    imm_prefix: str = ""
 
     @property
     def insns(self) -> dict[str, Callable[..., Any]]:

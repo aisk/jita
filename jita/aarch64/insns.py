@@ -66,7 +66,9 @@ def _define() -> None:
     names = globals()
     for mn in sorted(MNEMONIC_ARGC):
         py = PY_NAMES.get(mn, mn)
-        INSNS[py] = names[py] = _make(mn, py)
+        # beq and b.eq are one instruction; listings always show b.eq.
+        shown = "b." + mn[1:] if mn[0] == "b" and mn[1:] in MAP_COND else None
+        INSNS[py] = names[py] = _make(mn, py, shown)
     # b.eq, b.ne, ... as attributes of b (same encoding as beq, bne, ...).
     for cond in MAP_COND:
         setattr(INSNS["b"], cond, _make("b" + cond, cond, "b." + cond))

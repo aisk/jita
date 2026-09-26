@@ -30,6 +30,7 @@ def _host_is_aarch64() -> bool:
 class Aarch64Arch(Arch):
     name = "aarch64"
     pointer_size = 8
+    imm_prefix = "#"
 
     def __init__(self) -> None:
         self._clear_cache: Callable[..., Any] | None = None

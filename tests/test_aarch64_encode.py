@@ -579,11 +579,15 @@ def test_listing():
         add(x2, x2, x1 << 1)  # noqa: F405
         movk(x3, 0xBEEF, lsl=16)  # noqa: F405
         b.ne("loop")  # noqa: F405
+        beq("loop")  # noqa: F405
+        tbz(x0, 3, "loop")  # noqa: F405
     text = listing(a)
     assert "ldr x1, [x0], #8" in text
     assert "add x2, x2, x1, lsl #1" in text
-    assert "movk x3, 0xbeef, lsl #16" in text
+    assert "movk x3, #0xbeef, lsl #16" in text
     assert "b.ne loop" in text and "rel19 -> loop" in text
+    assert "b.eq loop" in text and "beq" not in text
+    assert "tbz x0, #3, loop" in text
 
 
 # -- operands ------------------------------------------------------------------
