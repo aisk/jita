@@ -44,7 +44,10 @@ result and replaces the name with the `ctypes` callable. The body is a
 code generator: inside a factory it closes over the factory's parameters,
 so `k` above becomes an immediate and Python `if` statements can decide
 what code is emitted. `typed()` views memory through a `ctypes` structure,
-so generated code and Python share one definition of the layout.
+so generated code and Python share one definition of the layout. For an
+existing C header, [ctypesgen](https://github.com/ctypesgen/ctypesgen) or
+[clang2py](https://github.com/trolldbois/ctypeslib) generate that
+structure for you.
 Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands
 are written as `qword[rbx + rcx*8 + 8]` or `mem[x0 + 8]`, labels are
 strings or `Label` objects, and macros are plain Python functions. Without
