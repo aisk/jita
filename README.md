@@ -73,10 +73,8 @@ uv run python examples/sum_array.py
 
 ## Status
 
-x64 and aarch64. Tested on Linux. aarch64 encodings are checked against
-DynASM and an aarch64 assembler on an x86 host; running aarch64 code has
-not been tried on hardware yet. macOS uses the same mmap/mprotect path but
-is untested, and executable memory on Windows is not implemented yet.
+x64 and aarch64 on Linux. macOS goes through the same mmap/mprotect path.
+Executable memory on Windows is not implemented yet.
 
 ## License
 

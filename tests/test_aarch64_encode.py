@@ -749,6 +749,9 @@ def gnu_text(fn, ops):
         return f"{name} {ops[0]}, #0.0"
     if name == "brk" and not ops:
         return "brk #0"
+    if name in ("sxtb", "sxth") and ops[0].rt == "x":
+        # DynASM spells the 64-bit forms with an x source; GNU wants w.
+        return f"{name} {ops[0]}, w{ops[1].code}"
     if name in ("mov", "mvn") and len(ops) == 2 and isinstance(ops[1], RegMod):  # noqa: F405
         zr = "xzr" if ops[0].rt == "x" else "wzr"
         return f"{'orr' if name == 'mov' else 'orn'} {ops[0]}, {zr}, {ops[1]}"

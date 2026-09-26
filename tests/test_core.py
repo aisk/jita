@@ -1,3 +1,5 @@
+import platform
+
 import pytest
 
 import jita.x64 as x64
@@ -17,7 +19,8 @@ def test_default_section_and_arch():
     assert a.arch is x64.ARCH
     assert list(a.sections) == ["code"] and a.cur.name == "code"
     assert Assembler(x64.ARCH).arch is x64.ARCH
-    assert Assembler().arch is x64.ARCH
+    host = {"x86_64": "x64", "amd64": "x64", "aarch64": "aarch64", "arm64": "aarch64"}
+    assert Assembler().arch.name == host[platform.machine().lower()]
 
 
 def test_data_directives():
