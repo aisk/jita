@@ -41,6 +41,9 @@ def _make(mnemonic: str, pyname: str) -> Callable[..., None]:
     insn.__name__ = insn.__qualname__ = pyname
     counts = MNEMONIC_ARGC.get(mnemonic, (2,))
     insn.__doc__ = f"Emit `{mnemonic}` ({' or '.join(map(str, counts))} operands)."
+    # `from jita.x64 import *` in a test module brings in `test`; this keeps
+    # pytest from collecting it as a test function.
+    setattr(insn, "__test__", False)
 
     if mnemonic in SHORT_BRANCHES:
 

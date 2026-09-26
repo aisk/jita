@@ -39,9 +39,9 @@ keywords or builtins are `and_`, `or_`, `not_` and `int_`; on aarch64
 `and_` and `str_` (the methods `a.and_` and `a.str` both exist).
 `from jita.x64 import *` exports registers and their classes, size
 prefixes, `label`, `typed`, the mnemonics and the architecture classes,
-and nothing else. Note that it exports `test`,
-which pytest collects as a test; write `del test` or import the module
-qualified in test files.
+and nothing else. The mnemonic functions set `__test__ = False`, so
+pytest does not collect the x64 `test` instruction from a test module
+that imports it with `*`.
 
 ## Sections
 

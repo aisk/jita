@@ -12,8 +12,6 @@ from jita import Assembler, EncodeError
 from jita.x64 import *  # noqa: F403
 from jita.x64.structs import Typed, TypedArray
 
-del test  # noqa: F821, the x64 mnemonic, not a pytest test
-
 needs_host = pytest.mark.skipif(
     platform.machine().lower() not in ("x86_64", "amd64") or platform.system() == "Windows",
     reason="needs an x86-64 POSIX host",

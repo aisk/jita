@@ -15,9 +15,6 @@ from jita import Assembler, Extern, current, function
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 
-x64_test = test
-del test  # noqa: F821, the x64 mnemonic, not a pytest test
-
 pytestmark = pytest.mark.skipif(
     platform.machine().lower() not in ("x86_64", "amd64") or platform.system() == "Windows",
     reason="needs an x86-64 POSIX host",
@@ -30,7 +27,7 @@ LABS = 0 if platform.system() == "Windows" else ctypes.cast(ctypes.CDLL(None).la
 def gen_sum():
     # int64_t sum(const int64_t *p, size_t n)
     xor(eax, eax)
-    x64_test(rsi, rsi)
+    test(rsi, rsi)
     jz("done")
     label("loop")
     add(rax, qword[rdi])

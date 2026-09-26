@@ -13,8 +13,6 @@ from jita.core import ABS64, REL32, SLOT_REL32
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 
-del test  # noqa: F821, the x64 mnemonic, not a pytest test
-
 needs_host = pytest.mark.skipif(
     platform.machine().lower() not in ("x86_64", "amd64") or platform.system() == "Windows",
     reason="needs an x86-64 POSIX host",

@@ -22,10 +22,6 @@ from jita.x64 import *  # noqa: F403
 from jita.x64 import insns
 from jita.x64.table import MAP_CC, MAP_OP
 
-# `test` is an x64 mnemonic; keep pytest from collecting it.
-insn_test = test  # noqa: F405
-del test
-
 
 def encode(fn, *ops):
     """Encode one instruction into a fresh Assembler, return (bytes, patches)."""
@@ -150,12 +146,12 @@ CASES = [
     (movsx, (r9, r10w), "4d0fbfca"),
     (movsxd, (rax, ecx), "4863c1"),
     (movsxd, (r8, dword[rbx]), "4c6303"),
-    (insn_test, (rax, rbx), "4885d8"),
-    (insn_test, (al, 1), "a801"),
-    (insn_test, (eax, 0x100), "a900010000"),
-    (insn_test, (ecx, 5), "f7c105000000"),
-    (insn_test, (qword[rax], 7), "48f70007000000"),
-    (insn_test, (byte[rax], 1), "f60001"),
+    (test, (rax, rbx), "4885d8"),
+    (test, (al, 1), "a801"),
+    (test, (eax, 0x100), "a900010000"),
+    (test, (ecx, 5), "f7c105000000"),
+    (test, (qword[rax], 7), "48f70007000000"),
+    (test, (byte[rax], 1), "f60001"),
     (xchg, (rax, rbx), "4893"),
     (xchg, (rcx, rax), "4891"),
     (xchg, (rcx, rdx), "4887ca"),
@@ -629,7 +625,7 @@ def test_exec_sum_array():
     with a:
         loop, done = Label(), Label()
         xor(eax, eax)
-        insn_test(rsi, rsi)
+        test(rsi, rsi)
         jz.short(done)
         a.bind(loop)
         add(rax, qword[rdi + rsi * 8 - 8])
