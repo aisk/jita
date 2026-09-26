@@ -117,9 +117,17 @@ class _b_method(Protocol):
     def lo(self, op0: _Target, /) -> None:
         """Emit `b.lo` (1 operands)."""
 
+class _NotAnInstruction:
+    """What an unknown attribute of an arch assembler is to a type checker:
+    not callable, so `a.movv(...)` is reported."""
+
+
 class Aarch64Assembler(Assembler):
     """An Assembler for aarch64. `Assembler("aarch64")` returns one; its
     mnemonic methods are typed in the stub."""
+
+    def __getattr__(self, name: str) -> _NotAnInstruction:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Unknown names are not instructions."""
 
     @overload
     def adc(self, op0: W, op1: W, op2: W, /) -> None:

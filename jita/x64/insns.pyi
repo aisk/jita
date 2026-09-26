@@ -535,9 +535,17 @@ class _jz_method(Protocol):
     def short(self, op0: _Target, /) -> None:
         """Emit `jz` with a rel8 displacement."""
 
+class _NotAnInstruction:
+    """What an unknown attribute of an arch assembler is to a type checker:
+    not callable, so `a.movv(...)` is reported."""
+
+
 class X64Assembler(Assembler):
     """An Assembler for x64. `Assembler("x64")` returns one; its mnemonic
     methods are typed in the stub."""
+
+    def __getattr__(self, name: str) -> _NotAnInstruction:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Unknown names are not instructions."""
 
     def a32(self) -> None:
         """Emit `a32` (0 operands)."""

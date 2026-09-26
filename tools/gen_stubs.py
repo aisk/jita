@@ -565,6 +565,20 @@ def _all_literal(names: Iterable[str]) -> str:
 X64_NAMES = {"int": "_Imm", "Target": "_Target"}
 
 
+# Misspelled mnemonics: Assembler.__getattr__ (a bound mnemonic) would accept
+# any name, so the arch assemblers narrow it to a type that cannot be called.
+_NOT_AN_INSN = (
+    "\nclass _NotAnInstruction:\n"
+    '    """What an unknown attribute of an arch assembler is to a type checker:\n'
+    '    not callable, so `a.movv(...)` is reported."""\n'
+)
+_GETATTR = (
+    "    def __getattr__(self, name: str) -> _NotAnInstruction:  # type: ignore[override]  "
+    "# pyright: ignore[reportIncompatibleMethodOverride]\n"
+    '        """Unknown names are not instructions."""\n'
+)
+
+
 def render_x64_insns(res: X64Result) -> str:
     insns = x64_insns.INSNS
     order, names = X64_CLASSES, X64_NAMES
@@ -600,9 +614,11 @@ def render_x64_insns(res: X64Result) -> str:
                          kwonly="" if method else "asm: Assembler | None = None, ", indent="    ")
             out += _defs("short", {1: short[py]}, sdoc, order, names, method=True,
                          kwonly="" if method else "asm: Assembler | None = None, ", indent="    ")
+    out.append(_NOT_AN_INSN)
     out.append("\nclass X64Assembler(Assembler):")
     out.append('    """An Assembler for x64. `Assembler("x64")` returns one; its mnemonic\n'
                '    methods are typed in the stub."""\n')
+    out.append(_GETATTR)
     for py in sorted(insns):
         src = "int_" if py == "int" else py
         if src in short:
@@ -664,9 +680,11 @@ def render_a64_insns(res: A64Result) -> str:
         for c in A64_COND:
             cdoc = getattr(b, c).__doc__ or ""
             out += _defs(c, {1: cond[c]}, cdoc, order, names, method=True, kwonly=kw, indent="    ")
+    out.append(_NOT_AN_INSN)
     out.append("\nclass Aarch64Assembler(Assembler):")
     out.append('    """An Assembler for aarch64. `Assembler("aarch64")` returns one; its\n'
                '    mnemonic methods are typed in the stub."""\n')
+    out.append(_GETATTR)
     for py in sorted(insns):
         src = "str_" if py == "str" else py
         if src == "b":

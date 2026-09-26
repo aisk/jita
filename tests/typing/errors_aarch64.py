@@ -59,5 +59,6 @@ def operands() -> None:
 
 def names() -> None:
     addd(x0, x1, x2)  # type: ignore[name-defined]  # pyright: ignore[reportUndefinedVariable]
+    a.addd(x0, x1, x2)  # type: ignore[operator]  # pyright: ignore[reportCallIssue]
     b.eqq("lbl")  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
     a.b.eqq("lbl")  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]

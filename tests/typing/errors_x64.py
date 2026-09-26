@@ -60,4 +60,5 @@ def operands() -> None:
 
 def names() -> None:
     movv(rax, 1)  # type: ignore[name-defined]  # pyright: ignore[reportUndefinedVariable]
+    a.movv(rax, 1)  # type: ignore[operator]  # pyright: ignore[reportCallIssue]
     a.jz.shortt("x")  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
