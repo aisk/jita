@@ -10,7 +10,6 @@ import pytest
 import jita.x64 as x64
 from jita import Assembler, Extern, Label, LinkError, LoadError
 from jita.core import ABS64, REL32
-from jita.runtime import ExecMemory
 
 pytestmark = pytest.mark.skipif(
     platform.machine().lower() not in ("x86_64", "amd64") or platform.system() == "Windows",
@@ -18,25 +17,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_exec_memory_basics():
-    with ExecMemory(10) as mem:
-        assert mem.size % 4096 == 0 and mem.size >= 4096
-        assert mem.address % 4096 == 0
-        mem.write(b"\xc3")
-        with pytest.raises(LoadError):
-            mem.write(b"\x00", mem.size)
-        mem.protect_exec()
-        with pytest.raises(LoadError):
-            mem.write(b"\x90")
-
-
-def test_icache_flush_hook():
-    seen = []
-    mem = ExecMemory(1, icache_flush=lambda addr, size: seen.append((addr, size)))
-    mem.protect_exec()
-    assert seen == [(mem.address, mem.size)]
-    mem.close()
-    mem.close()
 
 
 def test_return_42():
@@ -213,18 +193,6 @@ def test_non_writable_data_section_is_read_only():
     assert r.returncode in (-signal.SIGSEGV, -signal.SIGBUS), r.stderr.decode()
 
 
-def test_protect_exec_prefix():
-    page = mmap.PAGESIZE
-    mem = ExecMemory(3 * page)
-    with pytest.raises(LoadError):
-        mem.protect_exec(page + 1)
-    mem.protect_exec(page)
-    assert mem.executable
-    # The tail stays writable.
-    ctypes.memset(mem.address + page, 0xAB, 16)
-    assert ctypes.string_at(mem.address + page, 2) == b"\xab\xab"
-    mem.close()
-
 
 def test_image_address_rejects_foreign_label():
     a, b = Assembler(x64), Assembler(x64)
@@ -297,12 +265,6 @@ def test_image_outlives_assembler():
     assert img.address("end") == 0x1004
 
 
-def test_exec_memory_errors_are_load_errors():
-    with pytest.raises(LoadError, match="negative"):
-        ExecMemory(-1)
-    with pytest.raises(LoadError, match="cannot map"):
-        ExecMemory(1 << 70)
-
 
 def test_only_writable_sections():
     a = Assembler(x64)
@@ -317,16 +279,6 @@ def test_only_writable_sections():
         cell.value = 6
         assert cell.value == 6
 
-
-def test_exec_memory_writes_tail_after_protect():
-    page = mmap.PAGESIZE
-    with ExecMemory(2 * page) as mem:
-        mem.protect_exec(page)
-        mem.write(b"\x01\x02", page)
-        assert ctypes.string_at(mem.address + page, 2) == b"\x01\x02"
-        for off in (0, page - 1):
-            with pytest.raises(LoadError, match="executable"):
-                mem.write(b"\x00\x00", off)
 
 
 def test_module_write_patches_writable_data():

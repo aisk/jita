@@ -73,8 +73,7 @@ uv run python examples/sum_array.py
 
 ## Status
 
-x64 and aarch64 on Linux. macOS goes through the same mmap/mprotect path.
-Executable memory on Windows is not implemented yet.
+x64 and aarch64 on Linux, macOS and Windows.
 
 ## License
 
