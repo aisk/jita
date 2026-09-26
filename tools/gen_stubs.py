@@ -27,6 +27,7 @@ import functools
 import itertools
 import sys
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,9 @@ class _Sink:
 
     def named(self, name: str) -> Label:
         return Label(name)
+
+    def _forget_names_on_error(self) -> AbstractContextManager[None]:
+        return nullcontext()
 
 
 _SINK = _Sink()

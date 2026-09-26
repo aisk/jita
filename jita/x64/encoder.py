@@ -722,6 +722,11 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], short: bool = False) -> 
     `mnemonic` is the table name ("and", not "and_"). `short` requests the
     rel8 form of a jmp/jcc to a label. Nothing is emitted if encoding fails.
     """
+    with asm._forget_names_on_error():
+        _encode(asm, mnemonic, ops, short)
+
+
+def _encode(asm: Any, mnemonic: str, ops: Sequence[Any], short: bool = False) -> None:
     ops = tuple(_resolve_names(asm, op) for op in ops)
     if mnemonic in ("mov64", "movabs"):
         enc = _encode_mov64(ops, mnemonic)

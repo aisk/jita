@@ -3,7 +3,8 @@
 import builtins
 import importlib
 import platform
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any, Literal, Self, cast, overload
 
@@ -327,6 +328,18 @@ class Assembler(_AssemblerInit):
         if lbl is None:
             lbl = self._named[name] = Label(name, owner=self)
         return lbl
+
+    @contextmanager
+    def _forget_names_on_error(self) -> Iterator[None]:
+        """Forget the labels `named` creates inside the block if it raises,
+        so a rejected instruction leaves no forward reference behind."""
+        before = len(self._named)
+        try:
+            yield
+        except BaseException:
+            for name in list(self._named)[before:]:
+                del self._named[name]
+            raise
 
     # data directives
 

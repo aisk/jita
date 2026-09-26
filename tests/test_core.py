@@ -501,6 +501,23 @@ def test_named_label_never_bound():
         a.link()
 
 
+def test_rejected_instruction_leaves_no_named_label():
+    import jita.aarch64 as aarch64
+
+    a = Assembler(x64)
+    with pytest.raises(EncodeError):
+        a.mov("x", x64.rax)
+    with pytest.raises(EncodeError):
+        a.mov(x64.rax, x64.qword[x64.rip + "y"], 1)
+    a.bind(Label("x"))
+    a.bind(Label("y"))
+
+    b = Assembler(aarch64)
+    with pytest.raises(EncodeError):
+        b.adr(aarch64.w0, "z")
+    b.bind(Label("z"))
+
+
 def test_named_label_rejects_binding_a_different_object():
     a = Assembler(x64)
     a.qword("x")

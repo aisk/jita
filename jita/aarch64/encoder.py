@@ -586,6 +586,11 @@ def encode(asm: Any, mnemonic: str, ops: Sequence[Any], name: str | None = None)
     `mnemonic` is the table name ("and", "beq"). `name` is the name shown
     in listings (defaults to the mnemonic). Nothing is emitted on error.
     """
+    with asm._forget_names_on_error():
+        _encode(asm, mnemonic, ops, name)
+
+
+def _encode(asm: Any, mnemonic: str, ops: Sequence[Any], name: str | None = None) -> None:
     for op in ops:
         if isinstance(op, Addr):
             raise _error(mnemonic, ops, f"wrap the address in mem[...]: mem[{op}]")
