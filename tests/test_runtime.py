@@ -190,7 +190,8 @@ def test_non_writable_data_section_is_read_only():
         "a.load().function(None)()\n"
     )
     r = subprocess.run([sys.executable, "-c", script], capture_output=True)
-    assert r.returncode in (-signal.SIGSEGV, -signal.SIGBUS), r.stderr.decode()
+    sigbus = getattr(signal, "SIGBUS", signal.SIGSEGV)  # not on Windows (this module is skipped there)
+    assert r.returncode in (-signal.SIGSEGV, -sigbus), r.stderr.decode()
 
 
 

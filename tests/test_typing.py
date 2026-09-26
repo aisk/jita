@@ -183,9 +183,12 @@ def checks(gen, tmp_path_factory) -> dict[str, tuple[int, str] | str]:
         path.write_text(text)
         corpus.append(str(path))
     allowlist = str(TYPING / "stubtest_allowlist.txt")
+    mypy_cache = str(ROOT / ".mypy_cache" / "mypy")
     commands = {
         "pyright": ("pyright", ["--outputjson", "-p", "pyproject.toml", *CHECKED, *corpus]),
-        "mypy": ("mypy", ["--no-color-output", "--no-pretty", *CHECKED, *corpus]),
+        # stubtest runs at the same time and uses the default cache; sharing
+        # one sqlite cache fails with "database is locked" on Windows.
+        "mypy": ("mypy", ["--no-color-output", "--no-pretty", "--show-traceback", "--cache-dir", mypy_cache, *CHECKED, *corpus]),
         "stubtest": ("mypy.stubtest", ["--concise", "--allowlist", allowlist, "jita.x64", "jita.aarch64"]),
     }
     # The prefilter check runs alongside the checkers: about 5 s alone.
