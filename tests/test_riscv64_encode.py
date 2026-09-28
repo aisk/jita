@@ -929,6 +929,8 @@ def test_every_register_number(n):
         (fld, (fa0, "x", zero), "zero cannot hold the auipc address"),  # noqa: F405
         (fsw, (fa0, "x", x0), "zero cannot hold the auipc address"),  # noqa: F405
         (la, (zero, "x"), "zero cannot hold the auipc address"),  # noqa: F405
+        (sd, (t0, "x", t0), "must differ from the register stored"),  # noqa: F405
+        (sb, (a1, Extern("x"), a1), "must differ from the register stored"),  # noqa: F405
     ],
     ids=lambda v: mnemonic(v) if callable(v) else None,
 )
@@ -966,6 +968,22 @@ def test_lla_zero_is_accepted():
 def test_oracle_rejects_zero_auipc_base(text):
     with pytest.raises(OracleError):
         assemble("1:\n" + text, arch="riscv64")
+
+
+def test_store_to_label_takes_another_register():
+    # `sd t0, lbl, t0` would store the auipc result; GNU as assembles it
+    # anyway, jita rejects it (see test_encode_errors). A float store has
+    # no such clash.
+    a = Assembler(R)
+    fsd(ft0, "x", t0, asm=a)  # noqa: F405
+    a.label("x")
+    assert a.link().data.hex() == "97020000" "27b40200"
+
+
+@requires_riscv64_oracle
+def test_oracle_accepts_a_store_through_the_stored_register():
+    code = assemble("sd t0, T, t0\n.globl T\nT: nop", arch="riscv64")
+    assert code.hex() == "9702000023b4520013000000"
 
 
 def test_lui_negative_is_twos_complement():

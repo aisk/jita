@@ -25,6 +25,8 @@ every operand field zero, followed by one character per operand action:
             after `auipc rs1, hi20` and gets lo12 (PCREL32); rs1 must not
             be zero
   g         G that allows zero (`lla zero, lbl` is accepted by GNU as)
+  ~         rs1 must differ from rs2 (a store to a label: auipc into the
+            register being stored would overwrite the value)
   P Q       fence predecessor (bit 24) and successor (bit 20) sets
   #         any 64 bit value, expanded by `li`
   r         rounding mode from the `rm=` keyword at bit 12 (no operand)
@@ -62,7 +64,7 @@ MAP_OP: dict[str, str] = {
 
     # Loads and stores. With a label instead of a memory operand, a load
     # is `auipc rd; l* rd, lo(rd)` and a store takes a temporary register
-    # for the auipc: `sd a0, lbl, t0`.
+    # for the auipc, not the one stored: `sd a0, lbl, t0`.
     "lb_2": "00000003DL|00000003DEG",
     "lh_2": "00001003DL|00001003DEG",
     "lw_2": "00002003DL|00002003DEG",
@@ -71,13 +73,13 @@ MAP_OP: dict[str, str] = {
     "lhu_2": "00005003DL|00005003DEG",
     "lwu_2": "00006003DL|00006003DEG",
     "sb_2": "00000023MS",
-    "sb_3": "00000023MGN",
+    "sb_3": "00000023MGN~",
     "sh_2": "00001023MS",
-    "sh_3": "00001023MGN",
+    "sh_3": "00001023MGN~",
     "sw_2": "00002023MS",
-    "sw_3": "00002023MGN",
+    "sw_3": "00002023MGN~",
     "sd_2": "00003023MS",
-    "sd_3": "00003023MGN",
+    "sd_3": "00003023MGN~",
 
     # Integer arithmetic and logic.
     "addi_3": "00000013DNI",

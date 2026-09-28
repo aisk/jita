@@ -56,7 +56,7 @@ jobs:
           run() { qemu-riscv64 -L /usr/riscv64-linux-gnu "$RUNNER_TEMP/python/bin/python3.14" "$@"; }
           run -c 'import platform; assert platform.machine() == "riscv64", platform.machine()'
           run -m pytest tests -p no:cacheprovider --ignore tests/test_typing.py -ra | tee pytest.log
-          if grep -E "SKIPPED .*test_riscv64_(exec|encode)" pytest.log; then
+          if grep -E "SKIPPED .*(test_riscv64_(exec|encode)|needs a riscv64 host)" pytest.log; then
             echo "riscv64 tests were skipped"
             exit 1
           fi

@@ -316,6 +316,9 @@ def _parse_template(t: str, alt: _Alt) -> int:
                 raise alt.fail(f"immediate {_fmt(n)} out of range (64 bit)", 1)
             alt.li = n
             alt.next()
+        elif p == "~":
+            if (op >> 15) & 31 == (op >> 20) & 31:
+                raise alt.fail("the auipc register must differ from the register stored", 1, len(alt.params) - 1)
         elif p == "r":
             rm = "dyn" if alt.rm is None else alt.rm
             v = MAP_RM.get(rm) if isinstance(rm, str) else None

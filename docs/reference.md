@@ -513,7 +513,9 @@ fsrm fsrmi frflags fsflags fsflagsi`, `rdcycle rdtime rdinstret`,
   `auipc rd; ld rd, lo(rd)`. Stores and floating point loads name the
   register for the `auipc`: `sd(a0, target, t0)`, `fld(fa0, target, t0)`.
   That register cannot be `zero`, which would drop the high part (only
-  `lla(zero, ...)` is accepted, as in GNU as).
+  `lla(zero, ...)` is accepted, as in GNU as), and for an integer store
+  it cannot be the register stored, which the `auipc` would overwrite
+  (`sd(t0, target, t0)`; GNU as assembles it anyway).
 
 The listing shows a pseudo instruction as one line with all its words.
 
