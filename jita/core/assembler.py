@@ -17,6 +17,8 @@ from .section import Section
 if TYPE_CHECKING:
     from ..aarch64 import Aarch64Arch
     from ..aarch64.insns import Aarch64Assembler
+    from ..riscv64 import Riscv64Arch
+    from ..riscv64.insns import Riscv64Assembler
     from ..runtime.loader import JitFunction, Module
     from ..x64 import X64Arch
     from ..x64.insns import X64Assembler
@@ -51,10 +53,14 @@ def _host_arch() -> Arch:
         from .. import aarch64
 
         return aarch64.ARCH
+    if machine == "riscv64":
+        from .. import riscv64
+
+        return riscv64.ARCH
     raise JitaError(f"no jita architecture for host machine {machine!r}")
 
 
-_ARCH_NAMES = ("x64", "aarch64")
+_ARCH_NAMES = ("x64", "aarch64", "riscv64")
 
 
 def _resolve_arch(arch: object) -> Arch:
@@ -123,7 +129,7 @@ class _AssemblerInit:
     def __init__(self, arch: object = None) -> None:
         """`arch` is an Arch object, a package exposing one as `ARCH`
         (e.g. `jita.x64`) or the name of such a jita package ("x64",
-        "aarch64"). None selects the host architecture."""
+        "aarch64", "riscv64"). None selects the host architecture."""
         cast(Assembler, self)._setup(arch)
 
 
@@ -131,8 +137,8 @@ class Assembler(_AssemblerInit):
     """Collects sections, labels and patches for one piece of generated code.
 
     `Assembler(arch)` returns an instance of the architecture's subclass
-    (`X64Assembler`, `Aarch64Assembler`), whose mnemonic methods are typed
-    for static checkers.
+    (`X64Assembler`, `Aarch64Assembler`, `Riscv64Assembler`), whose
+    mnemonic methods are typed for static checkers.
     """
 
     # The architecture a subclass uses when `arch` is None.
@@ -142,6 +148,8 @@ class Assembler(_AssemblerInit):
     def __new__(cls, arch: Literal["x64"] | X64Arch) -> X64Assembler: ...
     @overload
     def __new__(cls, arch: Literal["aarch64"] | Aarch64Arch) -> Aarch64Assembler: ...
+    @overload
+    def __new__(cls, arch: Literal["riscv64"] | Riscv64Arch) -> Riscv64Assembler: ...
     @overload
     def __new__(cls, arch: object = None) -> Self: ...
     def __new__(cls, arch: object = None) -> Assembler:
@@ -229,7 +237,7 @@ class Assembler(_AssemblerInit):
         """Record a patch over bytes already emitted in the current section,
         without reserving new ones. The bytes there are the template the
         kind writes into: zero for x86 style fields or an instruction word
-        whose field a kind ORs in (aarch64).
+        whose field a kind ORs in (aarch64, riscv64).
 
         A `SlotKind` patch to an Extern (`qword[rip + ext]`) is recorded as
         `kind.field` to the extern's pointer slot, see `extern_slot`.

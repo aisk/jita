@@ -15,14 +15,50 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v10.2.0
-      - name: Install cross binutils for the other architecture's oracle
+      - name: Install cross binutils for the other architectures' oracles
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           if [ "$(uname -m)" = x86_64 ]; then
-            sudo apt-get install -y binutils-aarch64-linux-gnu
+            sudo apt-get install -y binutils-aarch64-linux-gnu binutils-riscv64-linux-gnu
           else
-            sudo apt-get install -y binutils-x86-64-linux-gnu
+            sudo apt-get install -y binutils-x86-64-linux-gnu binutils-riscv64-linux-gnu
           fi
       - run: uv sync
       - run: uv run pytest -q -ra
+
+  riscv64:
+    # The suite under qemu-user with a riscv64 CPython, so the riscv64
+    # execution tests really execute. test_typing needs the host checkers.
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.14.7+20260924-riscv64-unknown-linux-gnu-install_only.tar.gz
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install qemu-user, riscv64 binutils and the riscv64 runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user binutils-riscv64-linux-gnu libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
+      - name: Download a riscv64 CPython and pytest
+        run: |
+          curl -fsSL "$PYTHON_URL" | tar -xz -C "$RUNNER_TEMP"
+          # pytest and its dependencies are pure Python, so wheels resolved
+          # on the host run on the riscv64 interpreter.
+          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest
+      - name: Run the tests under qemu-riscv64
+        shell: bash  # -eo pipefail
+        env:
+          JITA_REQUIRE_RISCV64: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          export PYTHONPATH="$RUNNER_TEMP/site"
+          run() { qemu-riscv64 -L /usr/riscv64-linux-gnu "$RUNNER_TEMP/python/bin/python3.14" "$@"; }
+          run -c 'import platform; assert platform.machine() == "riscv64", platform.machine()'
+          run -m pytest tests -p no:cacheprovider --ignore tests/test_typing.py -ra | tee pytest.log
+          if grep -E "SKIPPED .*test_riscv64_(exec|encode)" pytest.log; then
+            echo "riscv64 tests were skipped"
+            exit 1
+          fi
+          PYTHONPATH=. run examples/riscv64_hello.py | tee example.log
+          grep -q "sum(1..100) = 5050" example.log

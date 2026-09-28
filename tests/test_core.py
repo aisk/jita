@@ -1,10 +1,11 @@
 import platform
+from typing import cast
 
 import pytest
 
 import jita.x64 as x64
 from jita import Assembler, Extern, JitaError, Label, LinkError, current, label
-from jita.core import ABS32, REL8, REL32, EncodeError
+from jita.core import ABS32, REL8, REL32, Arch, EncodeError
 from jita.core.patch import SLOT_REL32
 from jita.tools.listing import listing
 
@@ -19,7 +20,7 @@ def test_default_section_and_arch():
     assert a.arch is x64.ARCH
     assert list(a.sections) == ["code"] and a.cur.name == "code"
     assert Assembler(x64.ARCH).arch is x64.ARCH
-    host = {"x86_64": "x64", "amd64": "x64", "aarch64": "aarch64", "arm64": "aarch64"}
+    host = {"x86_64": "x64", "amd64": "x64", "aarch64": "aarch64", "arm64": "aarch64", "riscv64": "riscv64"}
     assert Assembler().arch.name == host[platform.machine().lower()]
 
 
@@ -249,7 +250,8 @@ def test_method_delegation_binds_asm():
         def insns(self):
             return {"fake": fake}
 
-    a = Assembler(FakeArch())
+    # Typed as a plain Assembler: X64Arch would make it an X64Assembler.
+    a = Assembler(cast(Arch, FakeArch()))
     a.fake(1, 2)
     a.fake.short(3)
     assert calls == [((1, 2), a), ("short", (3,), a)]
@@ -359,7 +361,7 @@ def test_assembler_subclasses_work_for_any_arch():
     class MyAssembler(Assembler):
         pass
 
-    for arch in ("x64", "aarch64", None):
+    for arch in ("x64", "aarch64", "riscv64", None):
         assert type(MyAssembler(arch)) is MyAssembler
     assert MyAssembler("aarch64").arch is aarch64.ARCH
 

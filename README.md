@@ -1,7 +1,7 @@
 # jita
 
-jita is a Python library for writing x64 and aarch64 machine code by hand
-and running it at runtime, in the spirit of LuaJIT's
+jita is a Python library for writing x64, aarch64 and riscv64 machine
+code by hand and running it at runtime, in the spirit of LuaJIT's
 [DynASM](https://luajit.org/dynasm.html). Instructions, labels and data
 directives are ordinary Python calls; jita encodes them, links labels and
 external symbols, and loads the result into executable memory that you
@@ -60,8 +60,8 @@ The full API is described in [docs/reference.md](docs/reference.md). The
 `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, three ways to call into libc
 from one module, an SSE2 dot product, a linked list of ctypes structures,
-a factory that specializes code by Python parameters and an aarch64
-function whose listing prints on any host.
+a factory that specializes code by Python parameters, and aarch64 and
+riscv64 functions whose listings print on any host.
 
 ## Install and run
 
@@ -74,7 +74,9 @@ uv run python examples/sum_array.py
 ## Status
 
 x64 and aarch64 on Linux, macOS and Windows.
+riscv64 (RV64 with I, M, A, F, D, Zicsr, Zifencei, Zba and Zbb) on Linux.
 
 ## License
 
-MIT. The instruction tables are derived from DynASM, see LICENSE.
+MIT. The x64 and aarch64 instruction tables are derived from DynASM, see
+LICENSE.

@@ -5,7 +5,8 @@
 
 The mnemonic functions are created at import time from the DynASM
 template tables, so a type checker cannot see them. This script writes
-`insns.pyi` and `__init__.pyi` for `jita.x64` and `jita.aarch64`, with one
+`insns.pyi` and `__init__.pyi` for `jita.x64`, `jita.aarch64` and
+`jita.riscv64`, with one
 `@overload` per accepted combination of operand classes (register width
 classes, sized memory classes, immediates, labels, ...).
 
@@ -44,6 +45,11 @@ from jita.aarch64.table import MAP_COND as A64_COND  # noqa: E402
 from jita.aarch64.table import MAP_OP as A64_OP  # noqa: E402
 from jita.core.errors import EncodeError  # noqa: E402
 from jita.core.labels import Label  # noqa: E402
+from jita.riscv64 import encoder as rv_encoder  # noqa: E402
+from jita.riscv64 import insns as rv_insns  # noqa: E402
+from jita.riscv64 import regs as rv_regs  # noqa: E402
+from jita.riscv64.mem import mem as rv_mem  # noqa: E402
+from jita.riscv64.table import MAP_OP as RV_OP  # noqa: E402
 from jita.x64 import encoder as x64_encoder  # noqa: E402
 from jita.x64 import insns as x64_insns  # noqa: E402
 from jita.x64 import mem as x64_mem  # noqa: E402
@@ -499,6 +505,84 @@ def a64_oracle(filtered: bool = True, max_arity: int | None = None) -> A64Result
     return res
 
 
+# -- riscv64 -------------------------------------------------------------------
+
+RV_CLASSES = ["X", "F", "int", "Mem", "Target", "Csr", "Fence"]
+
+
+def _rv_reps() -> dict[str, list[Any]]:
+    r = rv_regs
+    return {
+        "X": [r.a1, r.a2],
+        "F": [r.fa1, r.fa2],
+        "int": [0, 1, 3, 31, 63, 2047, -1, 0xFFFFF, 1 << 40],
+        # a3 as the base does not overlap the transfer registers.
+        "Mem": [rv_mem[r.a3], rv_mem[r.a3 + 8]],
+        "Target": [Label("target")],
+        "Csr": ["fflags"],
+        "Fence": ["rw"],
+    }
+
+
+RV_REPS = _rv_reps()
+
+_RV_LETTER: dict[str, list[str]] = {
+    "D": ["X"], "N": ["X"], "M": ["X"], "d": ["F"], "n": ["F"], "m": ["F"], "a": ["F"],
+    "I": ["int"], "U": ["int"], "H": ["int"], "W": ["int"], "K": ["int"], "#": ["int"],
+    "C": ["int", "Csr"], "L": ["Mem"], "S": ["Mem"], "A": ["Mem"],
+    "B": ["Target"], "J": ["Target"], "G": ["Target"], "g": ["Target"], "P": ["Fence"], "Q": ["Fence"],
+}  # fmt: skip
+
+
+def _rv_alts(mn: str) -> dict[int, list[list[set[str]]]]:
+    """Arity -> per alternative, the classes each operand may have. The
+    riscv64 templates check the kind of every operand exactly, so this is
+    the class level version of `encoder._parse_template`."""
+    out: dict[int, list[list[set[str]]]] = {}
+    for key, tpl in RV_OP.items():
+        name, _, n = key.rpartition("_")
+        if name != mn:
+            continue
+        for alt in tpl.split("|"):
+            out.setdefault(int(n), []).append([set(_RV_LETTER[ch]) for ch in alt[8:] if ch in _RV_LETTER])
+    return out
+
+
+class RvResult:
+    """Accepted points per mnemonic (dotted, "fadd.d") and arity."""
+
+    def __init__(self) -> None:
+        self.points: dict[str, dict[int, list[Point]]] = {}
+
+
+@functools.cache
+def rv_oracle(filtered: bool = True, max_arity: int | None = None) -> RvResult:
+    """Accepted points for every riscv64 mnemonic; `filtered` and
+    `max_arity` as for `x64_oracle`."""
+    res = RvResult()
+    for mn in sorted(rv_encoder.MNEMONIC_ARGC):
+
+        def enc(ops: Sequence[object], mn: str = mn) -> None:
+            rv_encoder.encode(_SINK, mn, ops)
+
+        per_n: dict[int, list[Point]] = {}
+        for n, alts in sorted(_rv_alts(mn).items()):
+            if max_arity is not None and n > max_arity:
+                continue
+            if n == 0:
+                per_n[0] = [()]
+                continue
+            if filtered:
+                viable: Iterable[Point] = sorted(
+                    {p for sets in alts for p in itertools.product(*(sorted(s, key=RV_CLASSES.index) for s in sets))}
+                )
+            else:
+                viable = itertools.product(RV_CLASSES, repeat=n)
+            per_n[n] = sorted(p for p in viable if _accepts(enc, [RV_REPS[c] for c in p]))
+        res.points[mn] = per_n
+    return res
+
+
 # -- rendering -----------------------------------------------------------------
 
 
@@ -705,6 +789,130 @@ def render_a64_insns(res: A64Result) -> str:
     return "\n".join(out)
 
 
+RV_NAMES = {"int": "_Imm", "Target": "_Target", "Mem": "MemExpr", "Csr": "CsrName", "Fence": "FenceSet"}
+
+
+class _RvNode:
+    """A dotted name in the riscv64 mnemonic tree: `fcvt`, `fcvt.w`,
+    `fcvt.w.d`. `mnemonic` is set when the name is an instruction."""
+
+    def __init__(self, path: str):
+        self.path = path
+        self.mnemonic: str | None = None
+        self.children: dict[str, _RvNode] = {}
+
+    @property
+    def proto(self) -> str:
+        return "_" + self.path.replace(".", "_")
+
+
+def _rv_tree() -> dict[str, _RvNode]:
+    top: dict[str, _RvNode] = {}
+    for mn in sorted(rv_encoder.MNEMONIC_ARGC):
+        parts = mn.split(".")
+        node = top.setdefault(parts[0], _RvNode(parts[0]))
+        for i, part in enumerate(parts[1:], 2):
+            node = node.children.setdefault(part, _RvNode(".".join(parts[:i])))
+        node.mnemonic = mn
+    return top
+
+
+def _rv_kw(mn: str | None, method: bool) -> str:
+    # Keywords before `asm`: `_defs` adds `asm` to module functions itself,
+    # protocol methods get it here unless `method`.
+    kw = "rm: Rm | None = None, " if mn in rv_encoder.RM_MNEMONICS else ""
+    return kw if method else kw + "asm: Assembler | None = None, "
+
+
+def _rv_protocols(node: _RvNode, merged: dict[str, dict[int, list[Sig]]], method: bool) -> list[str]:
+    """Protocol classes for a node with children, and for its subtrees."""
+    order, names = RV_CLASSES, RV_NAMES
+    suffix = "_method" if method else ""
+    obj: Any = rv_insns.MNEMONICS[node.mnemonic] if node.mnemonic else _rv_group(node.path)
+    out = [f"\nclass {node.proto}{suffix}(Protocol):", f'    """{obj.__doc__}"""\n']
+    if node.mnemonic:
+        out += _defs("__call__", merged[node.mnemonic], obj.__doc__ or "", order, names, method=True,
+                     kwonly=_rv_kw(node.mnemonic, method), indent="    ")
+    nested: list[_RvNode] = []
+    for part, child in node.children.items():
+        if child.children:
+            out.append(f"    {part}: {child.proto}{suffix}")
+            nested.append(child)
+            continue
+        assert child.mnemonic is not None
+        doc = rv_insns.MNEMONICS[child.mnemonic].__doc__ or ""
+        out += _defs(part, merged[child.mnemonic], doc, order, names, method=True,
+                     kwonly=_rv_kw(child.mnemonic, method), indent="    ")
+    for child in nested:
+        out += _rv_protocols(child, merged, method)
+    return out
+
+
+def _rv_group(path: str) -> Any:
+    obj: Any = rv_insns.INSNS[path.split(".")[0]]
+    for part in path.split(".")[1:]:
+        obj = getattr(obj, part)
+    return obj
+
+
+def render_rv_insns(res: RvResult) -> str:
+    order, names = RV_CLASSES, RV_NAMES
+    merged = {mn: _merge_all(p) for mn, p in res.points.items()}
+    tree = _rv_tree()
+    pynames = {rv_insns.PY_NAMES.get(k, k): node for k, node in tree.items()}
+    doc = rv_insns.__doc__ or ""
+    out = [HEADER + f'"""{doc.strip()}\n"""\n']
+    out.append(
+        "from collections.abc import Callable\n"
+        "from typing import Protocol, overload\n\n"
+        "from ..core.assembler import Assembler\n"
+        "from ..core.labels import Extern, Label\n"
+        "from ..core.operand import Imm\n"
+        "from .mem import MemExpr\n"
+        "from .regs import CsrName, F, FenceSet, Rm, X\n\n"
+        "# Annotations inside Riscv64Assembler go through these aliases, as on\n"
+        "# the other architectures.\n"
+        "type _Imm = int | Imm\n"
+        "type _Target = Label | Extern | str\n\n"
+        "PY_NAMES: dict[str, str]\n"
+        "INSNS: dict[str, Callable[..., None]]\n"
+        "MNEMONICS: dict[str, Callable[..., None]]\n\n"
+        "class Group:\n"
+        f'    """{" ".join((rv_insns.Group.__doc__ or "").split())}"""\n\n'
+        "    def __init__(self, name: str) -> None: ...\n"
+        "    def __call__(self, *ops: object, **kw: object) -> None: ...\n"
+    )
+    for method in (False, True):
+        for py, node in pynames.items():
+            if node.children:
+                out += _rv_protocols(node, merged, method)
+    out.append(_NOT_AN_INSN)
+    out.append("\nclass Riscv64Assembler(Assembler):")
+    out.append('    """An Assembler for riscv64. `Assembler("riscv64")` returns one; its\n'
+               '    mnemonic methods are typed in the stub."""\n')
+    out.append(_GETATTR)
+    for py in sorted(rv_insns.INSNS):
+        node = pynames[rv_insns.PY_NAMES.get(py, py)]
+        if node.children:
+            out.append(f"    {py}: {node.proto}_method")
+            continue
+        assert node.mnemonic is not None
+        out += _defs(py, merged[node.mnemonic], rv_insns.INSNS[py].__doc__ or "", order, names, method=True,
+                     kwonly=_rv_kw(node.mnemonic, True), indent="    ")
+    out.append("")
+    for py in rv_insns.__all__:
+        node = pynames[py]
+        if node.children:
+            out.append(f"{py}: {node.proto}")
+            continue
+        assert node.mnemonic is not None
+        out += _defs(py, merged[node.mnemonic], rv_insns.INSNS[py].__doc__ or "", order, names, method=False,
+                     kwonly=_rv_kw(node.mnemonic, True))
+    out.append("")
+    out.append(_all_literal(rv_insns.__all__))
+    return "\n".join(out)
+
+
 def render_x64_init() -> str:
     import jita.x64 as pkg
 
@@ -758,6 +966,36 @@ def render_a64_init() -> str:
     )
 
 
+def render_rv_init() -> str:
+    import jita.riscv64 as pkg
+
+    return (
+        HEADER
+        + f'"""{(pkg.__doc__ or "").strip()}"""\n\n'
+        + "from collections.abc import Callable\n"
+        "from typing import Any\n\n"
+        "from ..core.arch import Arch\n"
+        "from ..core.assembler import label as label\n"
+        "from .insns import *\n"
+        "from .insns import Riscv64Assembler as Riscv64Assembler\n"
+        "from .mem import *\n"
+        "from .regs import *\n\n"
+        "NOP: bytes\n"
+        "SYS_RISCV_FLUSH_ICACHE: int\n\n"
+        "class Riscv64Arch(Arch):\n"
+        "    def __init__(self) -> None: ...\n"
+        "    @property\n"
+        "    def insns(self) -> dict[str, Callable[..., Any]]: ...\n"
+        "    @property\n"
+        "    def assembler_class(self) -> type[Riscv64Assembler]: ...\n"
+        "    def nop_fill(self, n: int) -> bytes: ...\n"
+        "    def icache_flush(self, addr: int, size: int) -> None: ...\n\n"
+        "ARCH: Riscv64Arch\n\n"
+        "def _find_flush() -> Callable[[int, int], None]: ...\n"
+        "def _syscall_flush() -> Callable[[int, int], None]: ...\n\n" + _all_literal(pkg.__all__)
+    )
+
+
 # -- accepted corpus -----------------------------------------------------------
 
 X64_EXPR = {
@@ -770,6 +1008,10 @@ A64_EXPR = {
     "X": "x1", "W": "w1", "Sp": "sp", "S": "s1", "D": "d1", "Q": "q1",
     "RegModX": "(x2 << 3)", "RegModW": "w2.uxtw()", "Mod": 'Mod("lsl", 16)', "int": "1",
     "float": "1.5", "Mem": "mem[x3]", "Target": '"lbl"', "Cond": '"eq"', "Bti": '"c"',
+}  # fmt: skip
+RV_EXPR = {
+    "X": "a1", "F": "fa1", "int": "1", "Mem": "mem[a3]", "Target": '"lbl"', "Csr": '"fflags"',
+    "Fence": '"rw"',
 }  # fmt: skip
 
 
@@ -815,14 +1057,27 @@ def corpus() -> dict[str, str]:
         ac += _calls(f"b.{c}", pts, A64_EXPR) + _calls(f"a.b.{c}", pts, A64_EXPR)
     ac += _calls("a.str", a.points["str_"][2], A64_EXPR)
     ac += ["movz(x1, 1, lsl=16)", "a.movk(w1, 1, lsl=16)"]
-    return {"accepted_x64.py": _corpus_file("x64", xc), "accepted_aarch64.py": _corpus_file("aarch64", ac)}
+    rc: list[str] = []
+    for mn, per_n in sorted(rv_oracle().points.items()):
+        pts = [p for n in sorted(per_n) for p in per_n[n]]
+        parts = mn.split(".")
+        py = ".".join([rv_insns.PY_NAMES.get(parts[0], parts[0]), *parts[1:]])
+        rc += _calls(py, pts, RV_EXPR) + _calls(f"a.{py}", pts, RV_EXPR)
+    rc += _calls("a.min", rv_oracle().points["min"][3], RV_EXPR) + _calls("a.max", rv_oracle().points["max"][3], RV_EXPR)
+    rc += ['fadd.d(fa1, fa1, fa1, rm="rtz")', 'a.fcvt.w.d(a1, fa1, rm="rne")']
+    return {
+        "accepted_x64.py": _corpus_file("x64", xc),
+        "accepted_aarch64.py": _corpus_file("aarch64", ac),
+        "accepted_riscv64.py": _corpus_file("riscv64", rc),
+    }
 
 
 # -- prefilter check ---------------------------------------------------------------
 
 # Classes whose values the static type of another class already covers:
-# condition and bti names are strings, and a str is a label name.
-_COVERED_BY = {"Cond": "Target", "Bti": "Target"}
+# condition, bti, CSR and fence set names are strings, and a str is a label
+# name.
+_COVERED_BY = {"Cond": "Target", "Bti": "Target", "Csr": "Target", "Fence": "Target"}
 
 
 def _covered(point: Point, accepted: set[Point]) -> bool:
@@ -841,6 +1096,8 @@ def prefilter_drift(max_arity: int = 2) -> list[str]:
     pairs.append(("x64 .short", {k: {1: v} for k, v in xf.short.items()}, {k: {1: v} for k, v in xu.short.items()}))
     af, au = a64_oracle(True, max_arity), a64_oracle(False, max_arity)
     pairs.append(("aarch64", af.points, au.points))
+    rf, ru = rv_oracle(True, max_arity), rv_oracle(False, max_arity)
+    pairs.append(("riscv64", rf.points, ru.points))
     for arch, filt, unfilt in pairs:
         for py in sorted(set(filt) | set(unfilt)):
             for n in sorted(set(filt.get(py, {})) | set(unfilt.get(py, {}))):
@@ -865,6 +1122,8 @@ def generate() -> dict[Path, str]:
         ROOT / "jita/x64/__init__.pyi": render_x64_init(),
         ROOT / "jita/aarch64/insns.pyi": render_a64_insns(a64_oracle()),
         ROOT / "jita/aarch64/__init__.pyi": render_a64_init(),
+        ROOT / "jita/riscv64/insns.pyi": render_rv_insns(rv_oracle()),
+        ROOT / "jita/riscv64/__init__.pyi": render_rv_init(),
     }
 
 

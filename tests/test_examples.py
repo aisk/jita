@@ -13,6 +13,7 @@ EXAMPLES = ROOT / "examples"
 
 EXPECTED = {
     "aarch64_hello.py": ["b.ne loop", "; rel19 -> loop", "ldr x3, [x0], #8"],
+    "riscv64_hello.py": ["bnez a1, loop", "; b12 -> loop", "ld t0, strlen@slot", "; pcrel32 -> strlen@slot"],
     "sum_array.py": ["sum(1..100) = 5050"],
     "dispatch_table.py": ["result = -68"],
     "call_extern.py": [

@@ -17,7 +17,7 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match version $version"
             exit 1
           fi
-      - run: sudo apt-get update && sudo apt-get install -y binutils-aarch64-linux-gnu
+      - run: sudo apt-get update && sudo apt-get install -y binutils-aarch64-linux-gnu binutils-riscv64-linux-gnu
       - run: uv sync
       - run: uv run pytest -q
       - run: uv build

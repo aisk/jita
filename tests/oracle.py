@@ -66,6 +66,9 @@ __all__ = [
     "requires_aarch64_oracle",
     "aarch64_disassemble",
     "requires_aarch64_disassembler",
+    "riscv64_available",
+    "requires_riscv64_oracle",
+    "riscv64_disassemble",
 ]
 
 
@@ -130,7 +133,8 @@ def assemble(text: str, arch: str = "x64") -> bytes:
     """Assemble Intel-syntax x64 text and return the raw machine code bytes.
 
     With `arch="aarch64"`, assemble GNU syntax aarch64 text instead (see
-    `aarch64_assembler()`).
+    `aarch64_assembler()`), with `arch="riscv64"` riscv64 text (see
+    `riscv64_available()`).
 
     `text` is wrapped in `.intel_syntax noprefix` / `.text` and assembled
     with `as --64` in a temporary directory; the resulting object file is
@@ -142,6 +146,8 @@ def assemble(text: str, arch: str = "x64") -> bytes:
     """
     if arch == "aarch64":
         return _assemble_aarch64(text)
+    if arch == "riscv64":
+        return _assemble_riscv64(text)
     if arch != "x64":
         raise ValueError(f"unknown arch {arch!r}")
     if text in _assemble_cache:
@@ -297,6 +303,108 @@ def _assemble_aarch64(text: str) -> bytes:
         code = (tmp / "out.bin").read_bytes()
     _aarch64_cache[text] = code
     return code
+
+
+# riscv64: GNU cross binutils only. The -march string leaves out C, and the
+# source starts with `.option norvc` and `.option norelax`, so every
+# instruction is 4 bytes. The object is linked at address 0 (`ld
+# --no-relax`) before its bytes are taken, so references to global labels
+# are resolved by the linker: GNU as 2.42 resolves a local label in the low
+# part of an S-type auipc pair (`sd a0, 1b, t0`) into a wrong word itself,
+# which tests avoid by using `.globl` labels there.
+
+RISCV64_MARCH = "rv64imafd_zicsr_zifencei_zba_zbb"
+
+
+def _riscv64_tools() -> tuple[str, str, str, str] | None:
+    """(as, ld, objcopy, objdump) for riscv64, or None."""
+    tools = [shutil.which(f"riscv64-linux-gnu-{n}") for n in ("as", "ld", "objcopy", "objdump")]
+    if not all(tools):
+        return None
+    return (tools[0] or "", tools[1] or "", tools[2] or "", tools[3] or "")
+
+
+def riscv64_available() -> bool:
+    """True if riscv64-linux-gnu-as, -ld, -objcopy and -objdump were found."""
+    return _riscv64_tools() is not None
+
+
+requires_riscv64_oracle = pytest.mark.skipif(
+    not riscv64_available(), reason="no riscv64 binutils (riscv64-linux-gnu-as)"
+)
+
+_riscv64_cache: dict[str, bytes] = {}
+
+
+def _run(cmd: list[str]) -> None:
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise OracleError(r.stderr)
+
+
+def _riscv64_object(tmp: Path, text: str) -> Path:
+    """Assemble `text` into tmp/out.o and return its path."""
+    tools = _riscv64_tools()
+    if tools is None:
+        raise OracleError("no riscv64 binutils available")
+    source = ".option norvc\n.option norelax\n.text\n" + text
+    if not source.endswith("\n"):
+        source += "\n"
+    (tmp / "in.s").write_text(source)
+    _run([tools[0], f"-march={RISCV64_MARCH}", "-o", str(tmp / "out.o"), str(tmp / "in.s")])
+    return tmp / "out.o"
+
+
+def _assemble_riscv64(text: str) -> bytes:
+    if text in _riscv64_cache:
+        return _riscv64_cache[text]
+    tools = _riscv64_tools()
+    if tools is None:
+        raise OracleError("no riscv64 assembler available")
+    _, ld, objcopy, _ = tools
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        tmp = Path(tmp_dir)
+        obj = _riscv64_object(tmp, text)
+        _run([ld, "--no-relax", "-Ttext=0", "-e", "0", "-o", str(tmp / "out.elf"), str(obj)])
+        _run([objcopy, "-O", "binary", "-j", ".text", str(tmp / "out.elf"), str(tmp / "out.bin")])
+        code = (tmp / "out.bin").read_bytes()
+    _riscv64_cache[text] = code
+    return code
+
+
+def riscv64_disassemble(code: bytes, aliases: bool = False) -> list[str]:
+    """Disassemble riscv64 machine code with objdump, one line per word,
+    without the `# comment` objdump adds and with the tab after the
+    mnemonic turned into a space (`addi a0,a0,1`). `aliases` keeps
+    objdump's pseudo instruction names (`li`, `mv`); by default every
+    word is shown as the base instruction (`-M no-aliases`).
+
+    The words are assembled as `.insn` lines into an object file, whose
+    architecture attribute makes objdump decode Zba and Zbb (a raw binary
+    has none, and `-M max` is not known to older objdump)."""
+    tools = _riscv64_tools()
+    if tools is None:
+        raise OracleError("no riscv64 objdump available")
+    if len(code) % 4:
+        raise ValueError("riscv64 code must be a multiple of 4 bytes")
+    words = [int.from_bytes(code[i : i + 4], "little") for i in range(0, len(code), 4)]
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        obj = _riscv64_object(Path(tmp_dir), "".join(f".insn 0x{w:08x}\n" for w in words))
+        cmd = [tools[3], "-d", *([] if aliases else ["-M", "no-aliases"]), str(obj)]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OracleError(r.stderr)
+    lines = []
+    for raw in r.stdout.splitlines():
+        m = _LINE_RE.match(raw)
+        if m is None:
+            continue
+        parts = m.group(1).split("\t")
+        if len(parts) < 2:
+            continue
+        text = " ".join(p.strip() for p in parts[1:3] if p.strip())
+        lines.append(text.split("#", 1)[0].strip())
+    return lines
 
 
 def disassemble(code: bytes) -> list[str]:
