@@ -8,7 +8,7 @@ Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Labels](#labels) · [Externs](#externs) · [Data](#data-directives) ·
 [Functions](#functions) · [Listings](#listings) ·
 [x64](#x64) · [Structures](#structures) ·
-[aarch64](#aarch64) · [riscv64](#riscv64) ·
+[aarch64](#aarch64) · [riscv64](#riscv64) · [loongarch64](#loongarch64) ·
 [Compared with DynASM](#compared-with-dynasm) ·
 [Errors](#errors) · [Type checking](#type-checking)
 
@@ -22,12 +22,12 @@ with Assembler() as a:        # host architecture
     mov(rax, 1)               # module level mnemonics emit into `a`
     ret()
 a.mov(rax, 1)                 # every mnemonic is also a method
-b = Assembler("x64")          # or "aarch64", "riscv64", or the package jita.x64
+b = Assembler("x64")          # or "aarch64", "riscv64", "loongarch64", or jita.x64
 ```
 
 `Assembler(arch)` returns an instance of the architecture's subclass,
-`X64Assembler`, `Aarch64Assembler` or `Riscv64Assembler` (see
-[Type checking](#type-checking)).
+`X64Assembler`, `Aarch64Assembler`, `Riscv64Assembler` or
+`Loongarch64Assembler` (see [Type checking](#type-checking)).
 
 `with Assembler() as a:`, or `with a:` for an existing one, makes `a` the
 current assembler for the module level instruction functions and the
@@ -39,7 +39,8 @@ context use the method forms.
 Instruction names are lowercase. The x64 mnemonics that clash with Python
 keywords or builtins are `and_`, `or_`, `not_` and `int_`; on aarch64
 `and_` and `str_` (the methods `a.and_` and `a.str` both exist); on
-riscv64 `and_`, `or_`, `not_`, `min_` and `max_` (also `a.min`, `a.max`).
+riscv64 `and_`, `or_`, `not_`, `min_` and `max_` (also `a.min`, `a.max`);
+on loongarch64 `and_`, `or_` and `break_`.
 `from jita.x64 import *` exports registers and their classes, size
 prefixes, `label`, `typed`, the mnemonics and the architecture classes,
 and nothing else. The mnemonic functions set `__test__ = False`, so
@@ -534,6 +535,125 @@ GOT or PLT references are not supported. On a riscv64 host, loading code
 flushes the instruction cache through libgcc's `__clear_cache`, or the
 `riscv_flush_icache` system call when libgcc is not found.
 
+## loongarch64
+
+`jita.loongarch64` covers LA64: the base integer instructions, the
+atomics (`ll`, `sc`, `am*` and `am*_db`, barriers) and scalar single and
+double floating point. `Assembler()` picks it on a loongarch64 host;
+`Assembler("loongarch64")` generates loongarch64 code anywhere.
+
+```python
+from jita import Assembler
+from jita.loongarch64 import *
+
+a = Assembler("loongarch64")
+with a:                           # int64_t sum(int64_t *p, size_t n)
+    move(a2, zero)
+    beqz(a1, "done")
+    label("loop")
+    ld.d(a3, a0, 0)
+    add.d(a2, a2, a3)
+    addi.d(a0, a0, 8)
+    addi.d(a1, a1, -1)
+    bnez(a1, "loop")
+    label("done")
+    move(a0, a2)
+    ret()
+```
+
+Registers have their ABI names, `zero ra tp sp a0`..`a7 t0`..`t8 fp
+s0`..`s8` and `fa0`..`fa7 ft0`..`ft15 fs0`..`fs7`; `r0`..`r31` and
+`f0`..`f31` are the same objects under their numbers, `s9` is `fp`, and
+r21, which has no ABI name, is `r21`. The condition flags are
+`fcc0`..`fcc7` and the FP control registers `fcsr0`..`fcsr3`. The
+classes are `R`, `F`, `Fcc` and `Fcsr`: the mnemonic decides the width
+(`ld.w`, `ld.d`, `fadd.s`, `fadd.d`). `gpr(n)` and `fpr(n)` select a
+register by number. Python names have no `$`; listings print registers
+as objdump does, `$a0`.
+
+| Operand | jita | GNU as |
+| --- | --- | --- |
+| register | `add.d(a0, a1, a2)` | `add.d $a0, $a1, $a2` |
+| immediate | `addi.d(a0, a1, -1)`, `slli.d(a0, a0, 3)`, `lu12i.w(a0, -1)` | `-1`, `3`, `-1` |
+| base, offset | `ld.d(a0, sp, 8)`, `st.w(a1, a0, 0)`, `ldptr.d(a0, a1, 4096)` | `ld.d $a0, $sp, 8` |
+| base, index | `ldx.d(a0, a1, a2)` | `ldx.d $a0, $a1, $a2` |
+| dotted mnemonic | `fcmp.clt.d(fcc0, fa0, fa1)`, `amadd_db.w(...)`, `crc.w.b.w(...)` | `fcmp.clt.d`, `amadd_db.w` |
+| digit part | `revb._2h(a0, a1)`, `bitrev._8b(a0, a1)` | `revb.2h`, `bitrev.8b` |
+| label | `beqz(a0, "loop")`, `b(lbl)`, `call36("f")` | `beqz $a0, loop` |
+| keyword mnemonics | `and_`, `or_`, `break_` | `and`, `or`, `break` |
+
+There is no `mem[...]`: as in GNU syntax a load or store takes the base
+register and the offset as plain operands. Mnemonics with dots are
+attributes of a namespace object, so `add` itself is not an instruction,
+`add.w` and `add.d` are, and the methods are `a.add.d(...)`. A dotted
+part that starts with a digit gets a leading underscore. Immediates are
+checked by value against their field as GNU as checks them: signed for
+`addi`, `slti`, `sltui`, `lu52i.d`, `addu16i.d`, loads and stores and the
+20 bit `lu12i.w`, `lu32i.d` and `pcadd*` (`lu12i.w(a0, -1)`, not
+`0xfffff`); unsigned for `andi`, `ori`, `xori`, shift amounts, `break`,
+`dbar` and the other codes. The offsets of `ll`, `sc`, `ldptr`, `stptr`
+and `jirl` are byte offsets and must be multiples of 4. `alsl` takes the
+shift 1..4, `bstrins` and `bstrpick` need msb >= lsb, and the `am*`
+instructions (except `amswap.w`) reject an rd equal to rk or rj, as
+GNU as does.
+
+Beyond the base instructions jita has the GNU as aliases `nop move ret
+jr ud`, `rdcntvl.w rdcntvh.w rdcntid.w`, the branches `bgt ble bgtu bleu`
+(operands swapped) and `bltz bgez bgtz blez`, the swapped compares
+`fcmp.sgt fcmp.sge fcmp.cugt fcmp.cuge` in both precisions, and these
+multi instruction ones:
+
+- `li.w(rd, value)` loads a 32 bit value (signed or unsigned, sign
+  extended to 64 bits), `li.d(rd, value)` any 64 bit value, in 1 to 4
+  instructions. The expansion is GNU as' (`lu12i.w`, `ori` or `addi.w`,
+  `lu32i.d`, `lu52i.d`, each left out when the sign extension of the
+  parts below already gives it), so listings and disassembly agree with
+  assembler output. jita accepts -2^31..2^32-1 for `li.w` and
+  -2^63..2^64-1 for `li.d` and rejects anything else. GNU as is looser:
+  a `li.w` value whose high 32 bits are all ones is cut to its low 32
+  bits (`li.w $a0, -0x80000001` loads 0x7fffffff, `0xffffffff80000000` is
+  accepted), other values beyond 32 bits stop it with "li overflow", and
+  `li.d` values beyond 64 bits wrap (`-0x8000000000000001` loads
+  0x7fffffffffffffff).
+- `la.local(rd, target)` and `la.pcrel(rd, target)` are `pcalau12i rd;
+  addi.d rd, rd, lo12`. GNU as' plain `la` goes through the GOT, and jita
+  has no GOT, so `la` is only the namespace of these two.
+- `call36(target)` is `pcaddu18i ra; jirl ra, ra, lo` and
+  `tail36(rj, target)` is `pcaddu18i rj; jirl zero, rj, lo`. `call` and
+  `tail` are the same, as in GNU as.
+- A load with a label instead of the base and offset, `ld.d(rd, target)`,
+  is `pcalau12i rd; ld.d rd, rd, lo12`. Stores and floating point loads
+  and stores name the register for the `pcalau12i`:
+  `st.d(a0, target, t0)`, `fld.d(fa0, target, t0)`. For an integer
+  store that register cannot be the one stored (`st.d(t0, target, t0)`),
+  which the `pcalau12i` would overwrite. GNU as has no macro for these;
+  they are the pair GCC emits.
+- `pcaddi(rd, target)` is the single instruction form, +-2MB.
+
+The register that holds the address of a label reference cannot be
+`zero`: the high part would be lost and the second instruction would use
+an absolute address. GNU as accepts `tail36 $zero, lbl`; jita rejects it.
+`la.local(zero, ...)` leaves no register behind and is accepted.
+
+`pcalau12i` works on 4KB pages like `adrp` on aarch64; the pair adds the
+low 12 bits of the target, and the page part is rounded so that their
+sign extension brings it back. The pair reaches about +-2GB and
+`call36`/`tail36` about +-128GB, both computed from the exact field
+ranges. `beq`..`bgeu` and their aliases reach +-128KB, `beqz`, `bnez`,
+`bceqz` and `bcnez` +-4MB, and `b` and `bl` +-128MB. Branches are never
+relaxed; out of range is a `LinkError`. An `Extern` is a valid target of
+all of them, like a label, so `call36(ext)` works within +-128GB and
+`ld.d(a0, ext)` loads the 8 bytes at the extern's address. To call a
+function at any distance, load its address from the extern's pointer
+slot: `ld.d(t0, a.extern_slot(ext)); jirl(ra, t0, 0)`.
+
+The vector extensions (LSX, LASX), binary translation (LBT), privileged
+instructions, the newer `amcas`, `am*.b`/`am*.h`, `sc.q`, `llacq`/`screl`,
+`frecipe` and `frsqrte`, and the GOT, TLS and large code model forms of
+`la` are not supported. On a loongarch64 host, loading code runs libgcc's
+`__clear_cache`, which is an `ibar 0`, or an `ibar 0` stub of jita's own
+when libgcc is not found.
+
 ## Compared with DynASM
 
 jita follows DynASM's model (hand-written instructions, labels, sections,
@@ -557,7 +677,9 @@ ways:
   the specification and checked against GNU as, and pseudo instructions
   that expand to several instructions (`li`, `lla`, `call`, `tail`, label
   loads and stores) are part of the instruction set instead of being left
-  to macros.
+  to macros. The same goes for loongarch64 (`li.d`, `la.local`, `call36`),
+  whose table is checked against GNU as, not taken from Loongson's
+  DynASM port.
 
 ## Errors
 
@@ -588,13 +710,16 @@ a.mov(eax, qword[rdi])        # error: mixed operand sizes
 
 Registers are instances of width classes and memory operands of sized
 classes (see the operand tables of [x64](#x64), [aarch64](#aarch64) and
-[riscv64](#riscv64)), and each mnemonic has one overload per combination
+[riscv64](#riscv64) and [loongarch64](#loongarch64)), and each mnemonic
+has one overload per combination
 of classes the encoder accepts. So a checker reports wrong operand
 classes and widths, a wrong number of operands, a register where memory
 is needed and the reverse, misspelled mnemonics, `.short` on a
 non-branch, misspelled `b.cond` attributes and condition codes
-(`csel(x0, x1, x2, "lx")`), and on riscv64 misspelled dotted mnemonics,
-rounding modes, CSR names and fence sets.
+(`csel(x0, x1, x2, "lx")`), on riscv64 misspelled dotted mnemonics,
+rounding modes, CSR names and fence sets, and on loongarch64 misspelled
+dotted mnemonics and fcmp conditions and a register of the wrong class
+(`fcsr0` where `fcc0` is expected).
 
 What depends on values stays a runtime `EncodeError`: immediate ranges and
 encodability (imm8 versus imm32, bitmask and FP immediates), instructions
@@ -633,18 +758,20 @@ such as `Gp` works where every member does (`inc(r)`), but not for two
 operands that must agree in width (`add(r, r)` with `r: Gp` is an error),
 since checkers try each member on its own.
 
-`Assembler("x64")`, `Assembler("aarch64")` and `Assembler("riscv64")` are
-typed as `X64Assembler`, `Aarch64Assembler` and `Riscv64Assembler`, whose
+`Assembler("x64")`, `Assembler("aarch64")`, `Assembler("riscv64")` and
+`Assembler("loongarch64")` are typed as `X64Assembler`,
+`Aarch64Assembler`, `Riscv64Assembler` and `Loongarch64Assembler`, whose
 methods have the same overloads as the module level mnemonics; the
-riscv64 namespaces (`fadd`, `fcvt.w`) are protocols with a method per
-mnemonic, and `rm=` is typed as `Rm`. `Assembler()` (host) and
+riscv64 and loongarch64 namespaces (`fadd`, `fcvt.w`, `add`, `fcmp.clt`)
+are protocols with a method per mnemonic, and `rm=` is typed as `Rm`. `Assembler()` (host) and
 `Assembler(jita.x64)` are a plain `Assembler`, on which any method name
 and operands are accepted; annotate the parameter of a `function` body as
 `X64Assembler` to get the checks there. On the typed assemblers a misspelled method is reported
 as not callable (`a.movv(rax, 1)`).
 
 The stubs `jita/x64/insns.pyi`, `jita/aarch64/insns.pyi`,
-`jita/riscv64/insns.pyi` and the package `__init__.pyi` files are
+`jita/riscv64/insns.pyi`, `jita/loongarch64/insns.pyi` and the package
+`__init__.pyi` files are
 generated by `tools/gen_stubs.py`, which asks the encoder which operand
 classes each mnemonic accepts. Run it after changing
 the instruction tables; `--check` only reports stale stubs.

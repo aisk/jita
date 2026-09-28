@@ -20,7 +20,8 @@ def test_default_section_and_arch():
     assert a.arch is x64.ARCH
     assert list(a.sections) == ["code"] and a.cur.name == "code"
     assert Assembler(x64.ARCH).arch is x64.ARCH
-    host = {"x86_64": "x64", "amd64": "x64", "aarch64": "aarch64", "arm64": "aarch64", "riscv64": "riscv64"}
+    host = {"x86_64": "x64", "amd64": "x64", "aarch64": "aarch64", "arm64": "aarch64", "riscv64": "riscv64",
+            "loongarch64": "loongarch64"}  # fmt: skip
     assert Assembler().arch.name == host[platform.machine().lower()]
 
 
@@ -361,7 +362,7 @@ def test_assembler_subclasses_work_for_any_arch():
     class MyAssembler(Assembler):
         pass
 
-    for arch in ("x64", "aarch64", "riscv64", None):
+    for arch in ("x64", "aarch64", "riscv64", "loongarch64", None):
         assert type(MyAssembler(arch)) is MyAssembler
     assert MyAssembler("aarch64").arch is aarch64.ARCH
 

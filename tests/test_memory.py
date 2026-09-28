@@ -1,6 +1,7 @@
 """`ExecMemory` on every host, plus calling convention free smoke tests of
-loaded code on x86-64, aarch64 and riscv64 hosts, Windows included. The rest of the
-runtime tests write SysV code and live in test_runtime.py."""
+loaded code on x86-64, aarch64, riscv64 and loongarch64 hosts, Windows
+included. The rest of the runtime tests write SysV code and live in
+test_runtime.py."""
 
 import ctypes
 import mmap
@@ -9,6 +10,7 @@ import platform
 import pytest
 
 import jita.aarch64 as aarch64
+import jita.loongarch64 as loongarch64
 import jita.riscv64 as riscv64
 import jita.x64 as x64
 from jita import Assembler, LoadError
@@ -18,6 +20,7 @@ MACHINE = platform.machine().lower()
 x86_64_host = pytest.mark.skipif(MACHINE not in ("x86_64", "amd64"), reason="needs an x86-64 host")
 aarch64_host = pytest.mark.skipif(MACHINE not in ("aarch64", "arm64"), reason="needs an aarch64 host")
 riscv64_host = pytest.mark.skipif(MACHINE != "riscv64", reason="needs a riscv64 host")
+loongarch64_host = pytest.mark.skipif(MACHINE != "loongarch64", reason="needs a loongarch64 host")
 
 
 def test_exec_memory_basics():
@@ -123,5 +126,15 @@ def test_riscv64_add_two_ints():
     with a:
         riscv64.addw(riscv64.a0, riscv64.a0, riscv64.a1)
         riscv64.ret()
+    with a.load() as mod:
+        assert mod.function(ctypes.c_int, ctypes.c_int, ctypes.c_int)(40, 2) == 42
+
+
+@loongarch64_host
+def test_loongarch64_add_two_ints():
+    a = Assembler(loongarch64)
+    with a:
+        loongarch64.add.w(loongarch64.a0, loongarch64.a0, loongarch64.a1)
+        loongarch64.ret()
     with a.load() as mod:
         assert mod.function(ctypes.c_int, ctypes.c_int, ctypes.c_int)(40, 2) == 42

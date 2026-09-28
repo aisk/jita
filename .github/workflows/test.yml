@@ -62,3 +62,44 @@ jobs:
           fi
           PYTHONPATH=. run examples/riscv64_hello.py | tee example.log
           grep -q "sum(1..100) = 5050" example.log
+
+  loongarch64:
+    # The suite under qemu-user with Debian's loong64 CPython, so the
+    # loongarch64 execution tests really execute. Ubuntu has no loongarch
+    # cross packages, so the job runs in a Debian sid container, where
+    # everything is root and there is no sudo.
+    runs-on: ubuntu-latest
+    container: debian:sid
+    steps:
+      - name: Install qemu-user and loongarch64 binutils
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git qemu-user binutils-loongarch64-linux-gnu
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Unpack a loong64 CPython with its glibc and install pytest
+        run: |
+          # glibc and the GCC runtime come from the same index as Python, so
+          # they match however far the cross packages lag behind sid.
+          uv run --no-project --python 3.14 tools/fetch_debian_python.py --with-libc loong64 3.14 "$RUNNER_TEMP/loong64" >> "$GITHUB_ENV"
+          # pytest and its dependencies are pure Python, so wheels resolved
+          # on the host run on the loong64 interpreter.
+          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest
+      - name: Run the tests under qemu-loongarch64
+        shell: bash  # -eo pipefail
+        env:
+          JITA_REQUIRE_LOONGARCH64: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          export PYTHONPATH="$RUNNER_TEMP/site"
+          run() { qemu-loongarch64 -L "$PYTHON_SYSROOT" "$PYTHON" "$@"; }
+          run -c 'import platform; assert platform.machine() == "loongarch64", platform.machine()'
+          run -m pytest tests -p no:cacheprovider --ignore tests/test_typing.py -ra | tee pytest.log
+          if grep -E "SKIPPED .*(test_loongarch64_(exec|encode)|needs a loongarch64 host)" pytest.log; then
+            echo "loongarch64 tests were skipped"
+            exit 1
+          fi
+          PYTHONPATH=. run examples/loongarch64_hello.py | tee example.log
+          grep -q "sum(1..100) = 5050" example.log

@@ -25,6 +25,9 @@ import pytest
 import jita.aarch64 as A
 import jita.aarch64.insns
 import jita.aarch64.regs
+import jita.loongarch64 as LA
+import jita.loongarch64.insns
+import jita.loongarch64.regs
 import jita.riscv64 as R
 import jita.riscv64.insns
 import jita.riscv64.regs
@@ -33,6 +36,7 @@ import jita.x64.insns
 import jita.x64.regs
 from jita import Assembler
 from jita.aarch64.insns import Aarch64Assembler
+from jita.loongarch64.insns import Loongarch64Assembler
 from jita.riscv64.insns import Riscv64Assembler
 from jita.riscv64.mem import MemExpr as RvMemExpr
 from jita.x64.insns import X64Assembler
@@ -70,6 +74,9 @@ def test_assembler_dispatches_to_the_arch_class():
     assert type(Assembler()) is Assembler(None).arch.assembler_class
     assert X64Assembler().arch is X.ARCH and Aarch64Assembler().arch is A.ARCH
     assert Riscv64Assembler().arch is R.ARCH
+    assert type(Assembler("loongarch64")) is Loongarch64Assembler
+    assert type(Assembler(LA.ARCH)) is Loongarch64Assembler
+    assert Loongarch64Assembler().arch is LA.ARCH
     with pytest.raises(TypeError, match="cannot assemble for aarch64"):
         X64Assembler("aarch64")
 
@@ -123,8 +130,18 @@ def test_riscv64_register_classes():
     assert type(R.mem[r.sp + 8]) is RvMemExpr
 
 
+def test_loongarch64_register_classes():
+    r = jita.loongarch64.regs
+    assert type(r.a0) is r.R and type(r.zero) is r.R and type(r.fa0) is r.F
+    assert type(r.fcc0) is r.Fcc and type(r.fcsr0) is r.Fcsr
+    assert r.r4 is r.a0 and r.f24 is r.fs0 and r.s9 is r.fp and r.r22 is r.fp
+    assert type(r.gpr(3)) is r.R and type(r.fpr(3)) is r.F
+
+
 @pytest.mark.parametrize(
-    "regs", [jita.x64.regs, jita.aarch64.regs, jita.riscv64.regs], ids=["x64", "aarch64", "riscv64"]
+    "regs",
+    [jita.x64.regs, jita.aarch64.regs, jita.riscv64.regs, jita.loongarch64.regs],
+    ids=["x64", "aarch64", "riscv64", "loongarch64"],
 )
 def test_static_register_assignments(regs):
     # Every register is a module attribute with its name, exported, and
@@ -158,7 +175,7 @@ def test_stubs_are_fresh(gen):
 
 @pytest.mark.parametrize(
     "module",
-    [X, jita.x64.insns, A, jita.aarch64.insns, R, jita.riscv64.insns],
+    [X, jita.x64.insns, A, jita.aarch64.insns, R, jita.riscv64.insns, LA, jita.loongarch64.insns],
     ids=lambda m: m.__name__.removeprefix("jita."),
 )
 def test_stub_all_matches_runtime(module):
@@ -209,7 +226,7 @@ def checks(gen, tmp_path_factory) -> dict[str, tuple[int, str] | str]:
         # stubtest runs at the same time and uses the default cache; sharing
         # one sqlite cache fails with "database is locked" on Windows.
         "mypy": ("mypy", ["--no-color-output", "--no-pretty", "--show-traceback", "--cache-dir", mypy_cache, *CHECKED, *corpus]),
-        "stubtest": ("mypy.stubtest", ["--concise", "--allowlist", allowlist, "jita.x64", "jita.aarch64", "jita.riscv64"]),
+        "stubtest": ("mypy.stubtest", ["--concise", "--allowlist", allowlist, "jita.x64", "jita.aarch64", "jita.riscv64", "jita.loongarch64"]),
     }
     # The prefilter check runs alongside the checkers: about 5 s alone.
     generator = str(ROOT / "tools" / "gen_stubs.py")

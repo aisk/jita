@@ -69,6 +69,9 @@ __all__ = [
     "riscv64_available",
     "requires_riscv64_oracle",
     "riscv64_disassemble",
+    "loongarch64_available",
+    "requires_loongarch64_oracle",
+    "loongarch64_disassemble",
 ]
 
 
@@ -134,7 +137,8 @@ def assemble(text: str, arch: str = "x64") -> bytes:
 
     With `arch="aarch64"`, assemble GNU syntax aarch64 text instead (see
     `aarch64_assembler()`), with `arch="riscv64"` riscv64 text (see
-    `riscv64_available()`).
+    `riscv64_available()`), with `arch="loongarch64"` loongarch64 text (see
+    `loongarch64_available()`).
 
     `text` is wrapped in `.intel_syntax noprefix` / `.text` and assembled
     with `as --64` in a temporary directory; the resulting object file is
@@ -148,6 +152,8 @@ def assemble(text: str, arch: str = "x64") -> bytes:
         return _assemble_aarch64(text)
     if arch == "riscv64":
         return _assemble_riscv64(text)
+    if arch == "loongarch64":
+        return _assemble_loongarch64(text)
     if arch != "x64":
         raise ValueError(f"unknown arch {arch!r}")
     if text in _assemble_cache:
@@ -404,6 +410,84 @@ def riscv64_disassemble(code: bytes, aliases: bool = False) -> list[str]:
             continue
         text = " ".join(p.strip() for p in parts[1:3] if p.strip())
         lines.append(text.split("#", 1)[0].strip())
+    return lines
+
+
+# loongarch64: GNU cross binutils only, `-mno-relax` so the pseudo
+# instructions keep their full expansion. As for riscv64 the object is
+# linked at address 0 before its bytes are taken, so label references are
+# resolved by the linker the way jita resolves them, not by as itself.
+
+
+def _loongarch64_tools() -> tuple[str, str, str, str] | None:
+    """(as, ld, objcopy, objdump) for loongarch64, or None."""
+    tools = [shutil.which(f"loongarch64-linux-gnu-{n}") for n in ("as", "ld", "objcopy", "objdump")]
+    if not all(tools):
+        return None
+    return (tools[0] or "", tools[1] or "", tools[2] or "", tools[3] or "")
+
+
+def loongarch64_available() -> bool:
+    """True if loongarch64-linux-gnu-as, -ld, -objcopy and -objdump were found."""
+    return _loongarch64_tools() is not None
+
+
+requires_loongarch64_oracle = pytest.mark.skipif(
+    not loongarch64_available(), reason="no loongarch64 binutils (loongarch64-linux-gnu-as)"
+)
+
+_loongarch64_cache: dict[str, bytes] = {}
+
+
+def _assemble_loongarch64(text: str) -> bytes:
+    if text in _loongarch64_cache:
+        return _loongarch64_cache[text]
+    tools = _loongarch64_tools()
+    if tools is None:
+        raise OracleError("no loongarch64 assembler available")
+    gas, ld, objcopy, _ = tools
+    source = ".text\n" + text
+    if not source.endswith("\n"):
+        source += "\n"
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        tmp = Path(tmp_dir)
+        (tmp / "in.s").write_text(source)
+        _run([gas, "-mno-relax", "-o", str(tmp / "out.o"), str(tmp / "in.s")])
+        _run([ld, "--no-relax", "-Ttext=0", "-e", "0", "-o", str(tmp / "out.elf"), str(tmp / "out.o")])
+        _run([objcopy, "-O", "binary", "-j", ".text", str(tmp / "out.elf"), str(tmp / "out.bin")])
+        code = (tmp / "out.bin").read_bytes()
+    _loongarch64_cache[text] = code
+    return code
+
+
+def loongarch64_disassemble(code: bytes, aliases: bool = False) -> list[str]:
+    """Disassemble loongarch64 machine code with objdump, one line per
+    word, without the `# comment` objdump adds and with whitespace
+    collapsed (`addi.d $a0, $a0, 1`). `aliases` keeps objdump's alias
+    names (`move`, `ret`); by default every word is shown as the base
+    instruction (`-M no-aliases`)."""
+    tools = _loongarch64_tools()
+    if tools is None:
+        raise OracleError("no loongarch64 objdump available")
+    if len(code) % 4:
+        raise ValueError("loongarch64 code must be a multiple of 4 bytes")
+    with tempfile.TemporaryDirectory(prefix="jita-oracle-") as tmp_dir:
+        path = Path(tmp_dir) / "in.bin"
+        path.write_bytes(code)
+        cmd = [tools[3], "-D", "-b", "binary", "-m", "loongarch64", *([] if aliases else ["-M", "no-aliases"]), str(path)]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OracleError(r.stderr)
+    lines = []
+    for raw in r.stdout.splitlines():
+        m = _LINE_RE.match(raw)
+        if m is None:
+            continue
+        parts = m.group(1).split("\t")
+        if len(parts) < 2:
+            continue
+        text = " ".join(p.strip() for p in parts[1:3] if p.strip())
+        lines.append(re.sub(r"\s+", " ", text.split("#", 1)[0]).strip())
     return lines
 
 
