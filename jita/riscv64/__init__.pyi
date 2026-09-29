@@ -10,6 +10,7 @@ from .insns import *
 from .insns import Riscv64Assembler as Riscv64Assembler
 from .mem import *
 from .regs import *
+from .structs import typed as typed
 
 NOP: bytes
 SYS_RISCV_FLUSH_ICACHE: int
@@ -33,6 +34,7 @@ __all__ = [
     "Riscv64Arch",
     "Riscv64Assembler",
     "label",
+    "typed",
     "add",
     "addi",
     "addiw",

@@ -12,10 +12,18 @@ Registers are named by their ABI name, as objdump prints them; `r4` and
 with a `$` (`$a0`), which listings print. r21 has no ABI name in GNU as
 and is `r21`. There are no width classes: the mnemonic decides the
 access size and the precision (`ld.w`, `ld.d`, `fadd.s`, `fadd.d`).
+
+`a1 + 8` and `a1 - 16` build addresses for `typed()` (see
+`jita.loongarch64.mem`).
 """
+
+from typing import TYPE_CHECKING
 
 from ..core.errors import EncodeError
 from ..core.operand import Register
+
+if TYPE_CHECKING:
+    from .mem import Addr
 
 
 class Reg(Register):
@@ -34,6 +42,23 @@ class R(Reg):
 
     def __init__(self, name: str, code: int):
         super().__init__(name, "gp", code, 8)
+
+    # address arithmetic for typed()
+
+    def __add__(self, other: int) -> Addr:
+        from .mem import Addr
+
+        return Addr(self) + other
+
+    def __radd__(self, other: int) -> Addr:
+        from .mem import Addr
+
+        return Addr(self) + other
+
+    def __sub__(self, other: int) -> Addr:
+        from .mem import Addr
+
+        return Addr(self) - other
 
 
 class F(Reg):

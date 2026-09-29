@@ -23,6 +23,7 @@ from typing import Protocol, overload
 from ..core.assembler import Assembler
 from ..core.labels import Extern, Label
 from ..core.operand import Imm
+from .mem import MemExpr
 from .regs import F, Fcc, Fcsr, R
 
 # Annotations inside Loongarch64Assembler go through these aliases, as on
@@ -79,129 +80,129 @@ class _alsl(Protocol):
 class _amadd(Protocol):
     """Namespace of the `amadd.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amadd.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amadd.w` (3 operands)."""
 
 class _amadd_db(Protocol):
     """Namespace of the `amadd_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amadd_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amadd_db.w` (3 operands)."""
 
 class _amand(Protocol):
     """Namespace of the `amand.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amand.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amand.w` (3 operands)."""
 
 class _amand_db(Protocol):
     """Namespace of the `amand_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amand_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amand_db.w` (3 operands)."""
 
 class _ammax(Protocol):
     """Namespace of the `ammax.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax.wu` (3 operands)."""
 
 class _ammax_db(Protocol):
     """Namespace of the `ammax_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax_db.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax_db.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax_db.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammax_db.wu` (3 operands)."""
 
 class _ammin(Protocol):
     """Namespace of the `ammin.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin.wu` (3 operands)."""
 
 class _ammin_db(Protocol):
     """Namespace of the `ammin_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin_db.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin_db.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin_db.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `ammin_db.wu` (3 operands)."""
 
 class _amor(Protocol):
     """Namespace of the `amor.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amor.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amor.w` (3 operands)."""
 
 class _amor_db(Protocol):
     """Namespace of the `amor_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amor_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amor_db.w` (3 operands)."""
 
 class _amswap(Protocol):
     """Namespace of the `amswap.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amswap.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amswap.w` (3 operands)."""
 
 class _amswap_db(Protocol):
     """Namespace of the `amswap_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amswap_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amswap_db.w` (3 operands)."""
 
 class _amxor(Protocol):
     """Namespace of the `amxor.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amxor.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amxor.w` (3 operands)."""
 
 class _amxor_db(Protocol):
     """Namespace of the `amxor_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amxor_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /, *, asm: Assembler | None = None) -> None:
         """Emit `amxor_db.w` (3 operands)."""
 
 class _asrtgt(Protocol):
@@ -705,39 +706,49 @@ class _fld(Protocol):
     """Namespace of the `fld.*` mnemonics."""
 
     @overload
-    def d(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fld.d` (3 operands)."""
+    def d(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fld.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def d(self, op0: F, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def s(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fld.s` (3 operands)."""
+    def s(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fld.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def s(self, op0: F, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _fldgt(Protocol):
     """Namespace of the `fldgt.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fldgt.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fldgt.s` (3 operands)."""
 
 class _fldle(Protocol):
     """Namespace of the `fldle.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fldle.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fldle.s` (3 operands)."""
 
 class _fldx(Protocol):
     """Namespace of the `fldx.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fldx.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fldx.s` (3 operands)."""
+    @overload
+    def d(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fldx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def s(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fldx.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _flogb(Protocol):
     """Namespace of the `flogb.*` mnemonics."""
@@ -879,39 +890,49 @@ class _fst(Protocol):
     """Namespace of the `fst.*` mnemonics."""
 
     @overload
-    def d(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fst.d` (3 operands)."""
+    def d(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fst.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def d(self, op0: F, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def s(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fst.s` (3 operands)."""
+    def s(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fst.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def s(self, op0: F, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _fstgt(Protocol):
     """Namespace of the `fstgt.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fstgt.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fstgt.s` (3 operands)."""
 
 class _fstle(Protocol):
     """Namespace of the `fstle.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fstle.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `fstle.s` (3 operands)."""
 
 class _fstx(Protocol):
     """Namespace of the `fstx.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fstx.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `fstx.s` (3 operands)."""
+    @overload
+    def d(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fstx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def s(self, op0: F, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `fstx.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _fsub(Protocol):
     """Namespace of the `fsub.*` mnemonics."""
@@ -1043,37 +1064,37 @@ class _ld(Protocol):
     """Namespace of the `ld.*` mnemonics."""
 
     @overload
-    def b(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def b(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.b` (2 or 3 operands)."""
     @overload
     def b(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def bu(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def bu(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.bu` (2 or 3 operands)."""
     @overload
     def bu(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def d(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.d` (2 or 3 operands)."""
     @overload
     def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def h(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def h(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.h` (2 or 3 operands)."""
     @overload
     def h(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def hu(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def hu(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.hu` (2 or 3 operands)."""
     @overload
     def hu(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def w(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.w` (2 or 3 operands)."""
     @overload
     def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def wu(self, op0: R, op1: _Target, /, *, asm: Assembler | None = None) -> None:
+    def wu(self, op0: R, op1: MemExpr | _Target, /, *, asm: Assembler | None = None) -> None:
         """Emit `ld.wu` (2 or 3 operands)."""
     @overload
     def wu(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
@@ -1081,52 +1102,79 @@ class _ld(Protocol):
 class _ldgt(Protocol):
     """Namespace of the `ldgt.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldgt.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldgt.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldgt.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldgt.w` (3 operands)."""
 
 class _ldle(Protocol):
     """Namespace of the `ldle.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldle.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldle.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldle.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `ldle.w` (3 operands)."""
 
 class _ldptr(Protocol):
     """Namespace of the `ldptr.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldptr.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldptr.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldptr.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldptr.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 
 class _ldx(Protocol):
     """Namespace of the `ldx.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.b` (3 operands)."""
-    def bu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.bu` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.h` (3 operands)."""
-    def hu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.hu` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ldx.wu` (3 operands)."""
+    @overload
+    def b(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def bu(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.bu` (2 or 3 operands)."""
+    @overload
+    def bu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def h(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def hu(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.hu` (2 or 3 operands)."""
+    @overload
+    def hu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def wu(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ldx.wu` (2 or 3 operands)."""
+    @overload
+    def wu(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _li(Protocol):
     """Namespace of the `li.*` mnemonics."""
@@ -1139,10 +1187,16 @@ class _li(Protocol):
 class _ll(Protocol):
     """Namespace of the `ll.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ll.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `ll.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ll.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `ll.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 
 class _lu12i(Protocol):
     """Namespace of the `lu12i.*` mnemonics."""
@@ -1310,10 +1364,16 @@ class _rotri(Protocol):
 class _sc(Protocol):
     """Namespace of the `sc.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `sc.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `sc.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `sc.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `sc.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 
 class _sll(Protocol):
     """Namespace of the `sll.*` mnemonics."""
@@ -1367,69 +1427,95 @@ class _st(Protocol):
     """Namespace of the `st.*` mnemonics."""
 
     @overload
-    def b(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `st.b` (3 operands)."""
+    def b(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `st.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def b(self, op0: R, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `st.d` (3 operands)."""
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `st.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def d(self, op0: R, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def h(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `st.h` (3 operands)."""
+    def h(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `st.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def h(self, op0: R, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
     @overload
-    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `st.w` (3 operands)."""
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `st.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
     @overload
     def w(self, op0: R, op1: _Target, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _stgt(Protocol):
     """Namespace of the `stgt.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stgt.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stgt.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stgt.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stgt.w` (3 operands)."""
 
 class _stle(Protocol):
     """Namespace of the `stle.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stle.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stle.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stle.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /, *, asm: Assembler | None = None) -> None:
         """Emit `stle.w` (3 operands)."""
 
 class _stptr(Protocol):
     """Namespace of the `stptr.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stptr.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stptr.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stptr.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stptr.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
 
 class _stx(Protocol):
     """Namespace of the `stx.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stx.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stx.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stx.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-        """Emit `stx.w` (3 operands)."""
+    @overload
+    def b(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stx.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def d(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def h(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stx.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+        """Emit `stx.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 
 class _sub(Protocol):
     """Namespace of the `sub.*` mnemonics."""
@@ -1474,129 +1560,129 @@ class _alsl_method(Protocol):
 class _amadd_method(Protocol):
     """Namespace of the `amadd.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amadd.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amadd.w` (3 operands)."""
 
 class _amadd_db_method(Protocol):
     """Namespace of the `amadd_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amadd_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amadd_db.w` (3 operands)."""
 
 class _amand_method(Protocol):
     """Namespace of the `amand.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amand.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amand.w` (3 operands)."""
 
 class _amand_db_method(Protocol):
     """Namespace of the `amand_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amand_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amand_db.w` (3 operands)."""
 
 class _ammax_method(Protocol):
     """Namespace of the `ammax.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax.wu` (3 operands)."""
 
 class _ammax_db_method(Protocol):
     """Namespace of the `ammax_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax_db.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax_db.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax_db.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammax_db.wu` (3 operands)."""
 
 class _ammin_method(Protocol):
     """Namespace of the `ammin.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin.wu` (3 operands)."""
 
 class _ammin_db_method(Protocol):
     """Namespace of the `ammin_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin_db.d` (3 operands)."""
-    def du(self, op0: R, op1: R, op2: R, /) -> None:
+    def du(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin_db.du` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin_db.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /) -> None:
+    def wu(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `ammin_db.wu` (3 operands)."""
 
 class _amor_method(Protocol):
     """Namespace of the `amor.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amor.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amor.w` (3 operands)."""
 
 class _amor_db_method(Protocol):
     """Namespace of the `amor_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amor_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amor_db.w` (3 operands)."""
 
 class _amswap_method(Protocol):
     """Namespace of the `amswap.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amswap.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amswap.w` (3 operands)."""
 
 class _amswap_db_method(Protocol):
     """Namespace of the `amswap_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amswap_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amswap_db.w` (3 operands)."""
 
 class _amxor_method(Protocol):
     """Namespace of the `amxor.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amxor.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amxor.w` (3 operands)."""
 
 class _amxor_db_method(Protocol):
     """Namespace of the `amxor_db.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amxor_db.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R, op2: R | MemExpr, /) -> None:
         """Emit `amxor_db.w` (3 operands)."""
 
 class _asrtgt_method(Protocol):
@@ -2100,39 +2186,49 @@ class _fld_method(Protocol):
     """Namespace of the `fld.*` mnemonics."""
 
     @overload
-    def d(self, op0: F, op1: R, op2: _Imm, /) -> None:
-        """Emit `fld.d` (3 operands)."""
+    def d(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fld.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def d(self, op0: F, op1: _Target, op2: R, /) -> None: ...
     @overload
-    def s(self, op0: F, op1: R, op2: _Imm, /) -> None:
-        """Emit `fld.s` (3 operands)."""
+    def s(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fld.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def s(self, op0: F, op1: _Target, op2: R, /) -> None: ...
 
 class _fldgt_method(Protocol):
     """Namespace of the `fldgt.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fldgt.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fldgt.s` (3 operands)."""
 
 class _fldle_method(Protocol):
     """Namespace of the `fldle.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fldle.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fldle.s` (3 operands)."""
 
 class _fldx_method(Protocol):
     """Namespace of the `fldx.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
-        """Emit `fldx.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
-        """Emit `fldx.s` (3 operands)."""
+    @overload
+    def d(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fldx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: R, /) -> None: ...
+    @overload
+    def s(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fldx.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: R, /) -> None: ...
 
 class _flogb_method(Protocol):
     """Namespace of the `flogb.*` mnemonics."""
@@ -2274,39 +2370,49 @@ class _fst_method(Protocol):
     """Namespace of the `fst.*` mnemonics."""
 
     @overload
-    def d(self, op0: F, op1: R, op2: _Imm, /) -> None:
-        """Emit `fst.d` (3 operands)."""
+    def d(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fst.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def d(self, op0: F, op1: _Target, op2: R, /) -> None: ...
     @overload
-    def s(self, op0: F, op1: R, op2: _Imm, /) -> None:
-        """Emit `fst.s` (3 operands)."""
+    def s(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fst.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def s(self, op0: F, op1: _Target, op2: R, /) -> None: ...
 
 class _fstgt_method(Protocol):
     """Namespace of the `fstgt.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fstgt.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fstgt.s` (3 operands)."""
 
 class _fstle_method(Protocol):
     """Namespace of the `fstle.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
+    def d(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fstle.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
+    def s(self, op0: F, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `fstle.s` (3 operands)."""
 
 class _fstx_method(Protocol):
     """Namespace of the `fstx.*` mnemonics."""
 
-    def d(self, op0: F, op1: R, op2: R, /) -> None:
-        """Emit `fstx.d` (3 operands)."""
-    def s(self, op0: F, op1: R, op2: R, /) -> None:
-        """Emit `fstx.s` (3 operands)."""
+    @overload
+    def d(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fstx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: F, op1: R, op2: R, /) -> None: ...
+    @overload
+    def s(self, op0: F, op1: MemExpr, /) -> None:
+        """Emit `fstx.s` (2 or 3 operands)."""
+    @overload
+    def s(self, op0: F, op1: R, op2: R, /) -> None: ...
 
 class _fsub_method(Protocol):
     """Namespace of the `fsub.*` mnemonics."""
@@ -2438,37 +2544,37 @@ class _ld_method(Protocol):
     """Namespace of the `ld.*` mnemonics."""
 
     @overload
-    def b(self, op0: R, op1: _Target, /) -> None:
+    def b(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.b` (2 or 3 operands)."""
     @overload
     def b(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def bu(self, op0: R, op1: _Target, /) -> None:
+    def bu(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.bu` (2 or 3 operands)."""
     @overload
     def bu(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def d(self, op0: R, op1: _Target, /) -> None:
+    def d(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.d` (2 or 3 operands)."""
     @overload
     def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def h(self, op0: R, op1: _Target, /) -> None:
+    def h(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.h` (2 or 3 operands)."""
     @overload
     def h(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def hu(self, op0: R, op1: _Target, /) -> None:
+    def hu(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.hu` (2 or 3 operands)."""
     @overload
     def hu(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def w(self, op0: R, op1: _Target, /) -> None:
+    def w(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.w` (2 or 3 operands)."""
     @overload
     def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
-    def wu(self, op0: R, op1: _Target, /) -> None:
+    def wu(self, op0: R, op1: MemExpr | _Target, /) -> None:
         """Emit `ld.wu` (2 or 3 operands)."""
     @overload
     def wu(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
@@ -2476,52 +2582,79 @@ class _ld_method(Protocol):
 class _ldgt_method(Protocol):
     """Namespace of the `ldgt.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldgt.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldgt.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldgt.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldgt.w` (3 operands)."""
 
 class _ldle_method(Protocol):
     """Namespace of the `ldle.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldle.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldle.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldle.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `ldle.w` (3 operands)."""
 
 class _ldptr_method(Protocol):
     """Namespace of the `ldptr.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `ldptr.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `ldptr.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldptr.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldptr.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
 
 class _ldx_method(Protocol):
     """Namespace of the `ldx.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.b` (3 operands)."""
-    def bu(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.bu` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.h` (3 operands)."""
-    def hu(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.hu` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.w` (3 operands)."""
-    def wu(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `ldx.wu` (3 operands)."""
+    @overload
+    def b(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def bu(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.bu` (2 or 3 operands)."""
+    @overload
+    def bu(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def h(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def hu(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.hu` (2 or 3 operands)."""
+    @overload
+    def hu(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def wu(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ldx.wu` (2 or 3 operands)."""
+    @overload
+    def wu(self, op0: R, op1: R, op2: R, /) -> None: ...
 
 class _li_method(Protocol):
     """Namespace of the `li.*` mnemonics."""
@@ -2534,10 +2667,16 @@ class _li_method(Protocol):
 class _ll_method(Protocol):
     """Namespace of the `ll.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `ll.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `ll.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ll.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `ll.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
 
 class _lu12i_method(Protocol):
     """Namespace of the `lu12i.*` mnemonics."""
@@ -2705,10 +2844,16 @@ class _rotri_method(Protocol):
 class _sc_method(Protocol):
     """Namespace of the `sc.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `sc.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `sc.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `sc.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `sc.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
 
 class _sll_method(Protocol):
     """Namespace of the `sll.*` mnemonics."""
@@ -2762,69 +2907,95 @@ class _st_method(Protocol):
     """Namespace of the `st.*` mnemonics."""
 
     @overload
-    def b(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `st.b` (3 operands)."""
+    def b(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `st.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def b(self, op0: R, op1: _Target, op2: R, /) -> None: ...
     @overload
-    def d(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `st.d` (3 operands)."""
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `st.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def d(self, op0: R, op1: _Target, op2: R, /) -> None: ...
     @overload
-    def h(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `st.h` (3 operands)."""
+    def h(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `st.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def h(self, op0: R, op1: _Target, op2: R, /) -> None: ...
     @overload
-    def w(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `st.w` (3 operands)."""
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `st.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
     @overload
     def w(self, op0: R, op1: _Target, op2: R, /) -> None: ...
 
 class _stgt_method(Protocol):
     """Namespace of the `stgt.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stgt.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stgt.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stgt.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stgt.w` (3 operands)."""
 
 class _stle_method(Protocol):
     """Namespace of the `stle.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
+    def b(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stle.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
+    def d(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stle.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
+    def h(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stle.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
+    def w(self, op0: R, op1: R | MemExpr, op2: R, /) -> None:
         """Emit `stle.w` (3 operands)."""
 
 class _stptr_method(Protocol):
     """Namespace of the `stptr.*` mnemonics."""
 
-    def d(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `stptr.d` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: _Imm, /) -> None:
-        """Emit `stptr.w` (3 operands)."""
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stptr.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stptr.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: _Imm, /) -> None: ...
 
 class _stx_method(Protocol):
     """Namespace of the `stx.*` mnemonics."""
 
-    def b(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `stx.b` (3 operands)."""
-    def d(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `stx.d` (3 operands)."""
-    def h(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `stx.h` (3 operands)."""
-    def w(self, op0: R, op1: R, op2: R, /) -> None:
-        """Emit `stx.w` (3 operands)."""
+    @overload
+    def b(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stx.b` (2 or 3 operands)."""
+    @overload
+    def b(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def d(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stx.d` (2 or 3 operands)."""
+    @overload
+    def d(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def h(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stx.h` (2 or 3 operands)."""
+    @overload
+    def h(self, op0: R, op1: R, op2: R, /) -> None: ...
+    @overload
+    def w(self, op0: R, op1: MemExpr, /) -> None:
+        """Emit `stx.w` (2 or 3 operands)."""
+    @overload
+    def w(self, op0: R, op1: R, op2: R, /) -> None: ...
 
 class _sub_method(Protocol):
     """Namespace of the `sub.*` mnemonics."""
@@ -3038,10 +3209,16 @@ class Loongarch64Assembler(Assembler):
         """Emit `pcaddu18i` (2 operands)."""
     def pcalau12i(self, op0: R, op1: _Imm, /) -> None:
         """Emit `pcalau12i` (2 operands)."""
-    def preld(self, op0: _Imm, op1: R, op2: _Imm, /) -> None:
-        """Emit `preld` (3 operands)."""
-    def preldx(self, op0: _Imm, op1: R, op2: R, /) -> None:
-        """Emit `preldx` (3 operands)."""
+    @overload
+    def preld(self, op0: _Imm, op1: MemExpr, /) -> None:
+        """Emit `preld` (2 or 3 operands)."""
+    @overload
+    def preld(self, op0: _Imm, op1: R, op2: _Imm, /) -> None: ...
+    @overload
+    def preldx(self, op0: _Imm, op1: MemExpr, /) -> None:
+        """Emit `preldx` (2 or 3 operands)."""
+    @overload
+    def preldx(self, op0: _Imm, op1: R, op2: R, /) -> None: ...
     rdcntid: _rdcntid_method
     rdcntvh: _rdcntvh_method
     rdcntvl: _rdcntvl_method
@@ -3280,10 +3457,16 @@ def pcaddu18i(op0: R, op1: _Imm, /, *, asm: Assembler | None = None) -> None:
     """Emit `pcaddu18i` (2 operands)."""
 def pcalau12i(op0: R, op1: _Imm, /, *, asm: Assembler | None = None) -> None:
     """Emit `pcalau12i` (2 operands)."""
-def preld(op0: _Imm, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None:
-    """Emit `preld` (3 operands)."""
-def preldx(op0: _Imm, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None:
-    """Emit `preldx` (3 operands)."""
+@overload
+def preld(op0: _Imm, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+    """Emit `preld` (2 or 3 operands)."""
+@overload
+def preld(op0: _Imm, op1: R, op2: _Imm, /, *, asm: Assembler | None = None) -> None: ...
+@overload
+def preldx(op0: _Imm, op1: MemExpr, /, *, asm: Assembler | None = None) -> None:
+    """Emit `preldx` (2 or 3 operands)."""
+@overload
+def preldx(op0: _Imm, op1: R, op2: R, /, *, asm: Assembler | None = None) -> None: ...
 rdcntid: _rdcntid
 rdcntvh: _rdcntvh
 rdcntvl: _rdcntvl

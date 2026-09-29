@@ -19,6 +19,7 @@ __all__ = [
     "ArrayView",
     "StructView",
     "check_ctype",
+    "ctype_source",
     "element_offset",
     "get_field",
     "is_dunder",
@@ -34,6 +35,18 @@ def check_ctype(ctype: object) -> None:
     """TypeError unless `ctype` is a ctypes structure, union, array or scalar type."""
     if not isinstance(ctype, type) or not issubclass(ctype, (*AGGREGATES, ctypes.Array, *SCALARS)):
         raise TypeError(f"typed() expects a ctypes type, got {ctype!r}")
+
+
+def ctype_source(ctype: type) -> str:
+    """`ctype` as Python source for an error hint to copy: `ctypes.c_int * 4`
+    for an array type, whose own name (`c_int_Array_4`) is not bound."""
+    if issubclass(ctype, ctypes.Array):
+        return f"{ctype_source(getattr(ctype, '_type_'))} * {getattr(ctype, '_length_')}"
+    if issubclass(ctype, ctypes._Pointer):
+        return f"ctypes.POINTER({ctype_source(getattr(ctype, '_type_'))})"
+    if getattr(ctypes, ctype.__name__, None) is ctype:
+        return f"ctypes.{ctype.__name__}"
+    return ctype.__name__
 
 
 def scalar_size(ctype: type, arch: str) -> int:

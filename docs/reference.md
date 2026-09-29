@@ -46,9 +46,13 @@ prefixes, `label`, `typed`, the mnemonics and the architecture classes,
 and nothing else. `from jita.aarch64 import *` exports registers, their
 classes and selectors such as `gp64`, `mem`, the operand types `MemExpr`,
 `Mod`, `RegMod` and `Cond`, `label`, `typed`, the mnemonics and the
-architecture classes. The mnemonic functions set
-`__test__ = False`, so pytest does not collect the x64 `test`
-instruction from a test module that imports it with `*`.
+architecture classes. `from jita.riscv64 import *` exports registers,
+their classes, `gpr`, `fpr`, the literal types `Rm`, `CsrName` and
+`FenceSet`, `mem`, `MemExpr`, `label`, `typed`, the mnemonics and the
+architecture classes, and `from jita.loongarch64 import *` the same
+without `mem` and the literal types, with `Fcc` and `Fcsr`. The mnemonic
+functions set `__test__ = False`, so pytest does not collect the x64
+`test` instruction from a test module that imports it with `*`.
 
 ## Sections
 
@@ -402,6 +406,91 @@ it does not show in `str()` and does not affect `==`. To pair two fields
 of a structure, such as the `re` and `im` doubles of a complex number,
 use the structure's unsized `addr`: `ldp(d0, d1, c.addr)`.
 
+`jita.riscv64` has `typed` with a register, `a0 + 16` or `mem[...]` as
+the base.
+
+```python
+import ctypes
+from jita import Assembler
+from jita.riscv64 import *
+
+class Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32), ("tag", ctypes.c_uint8),
+                ("next", ctypes.c_void_p), ("v", ctypes.c_double * 4)]
+
+p = typed(a0, Point)
+with Assembler("riscv64"):
+    lw(a1, p.x)                   # 0(a0)
+    lbu(a2, p.tag)                # 8(a0)
+    fld(fa0, p.v[1])              # 32(a0)
+    ld(a3, p.next)                # 16(a0)
+    amoadd.w(zero, a1, p.x)       # (a0)
+    sh3add(t0, a5, a0)            # t0 = a0 + a5 * 8
+    fld(fa1, typed(t0 + Point.v.offset, ctypes.c_double))   # 24(t0)
+```
+
+A field's `MemExpr` carries its size, and every load, store, `lr`, `sc`
+and AMO checks it against its access width (`ld(a1, p.x)` with a 4 byte
+`x` raises `EncodeError`). `mem[p.x]` is the same operand. An offset
+outside -2048..2047 is the usual out of range error, and the atomics
+take a field at offset 0 of their base only; for another field, `addi`
+its offset into a register and view the field there. `jalr` rejects a
+typed operand, since it would jump to the field instead of loading it:
+load the field into a register and `jalr` that register. RISC-V loads
+and stores have no index register, so an array takes constant indexes
+only, and `p.v[a5]` raises `EncodeError` with the code that puts the
+element address in a register instead (`sh3add` for 8 byte elements, as
+above, or `slli` and `add`, or `mul` for other sizes).
+
+`jita.loongarch64` has `typed` with a register, `a0 + 16` or an unsized
+`MemExpr` such as a view's `addr` as the base. LoongArch assembly has no
+memory operand, so a field's `MemExpr` stands for the base and offset
+operands of the instruction, and an element with a register index for
+the base and index operands of `ldx`, `stx`, `fldx` and `fstx`. The same
+`MemExpr` can be built directly, `MemExpr(a0, 8)` or
+`MemExpr(a0, index=a1)`, and is then an unsized operand equivalent to
+writing the pair.
+
+```python
+import ctypes
+from jita import Assembler
+from jita.loongarch64 import *
+
+class Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32), ("tag", ctypes.c_uint8),
+                ("next", ctypes.c_void_p), ("v", ctypes.c_double * 4)]
+
+p = typed(a0, Point)
+with Assembler("loongarch64"):
+    ld.w(a1, p.x)                 # ld.w $a1, $a0, 0
+    ld.bu(a2, p.tag)              # ld.bu $a2, $a0, 8
+    fld.d(fa0, p.v[1])            # fld.d $fa0, $a0, 32
+    ldptr.d(a3, p.next)           # ldptr.d $a3, $a0, 16
+    amadd_db.w(zero, a1, p.x)     # amadd_db.w $zero, $a1, $a0
+    ldx.bu(a4, typed(a5, ctypes.c_uint8 * 64)[a6])  # ldx.bu $a4, $a5, $a6
+    alsl.d(t0, a6, a0, 3)         # t0 = a0 + a6 * 8
+    fld.d(fa1, typed(t0 + Point.v.offset, ctypes.c_double))  # fld.d $fa1, $t0, 24
+```
+
+The loads and stores, `ldptr`, `stptr`, `ll`, `sc`, `preld`, the `am*`
+atomics and the bounds checked `ldgt`, `ldle`, `stgt` and `stle` (and
+their floating point forms) take a `MemExpr` in place of their address
+operands, and the listing shows those operands. The access width comes
+from the mnemonic (`ld.w` is 4 bytes, `ammax.du` 8, `fld.s` 4) and must
+match the field. Offsets are range checked as for the plain operands,
+multiples of 4 up to +-32KB for `ldptr`, `stptr`, `ll` and `sc`. `am*`
+and the bounds checked forms take a bare base, so they take a field at
+offset 0 only; `addi.d` the offset of another field into a register and
+view it there. The indexed instructions add the index without scaling
+it and take no offset, so a register index needs 1 byte elements in an
+array at the base; other element sizes raise `EncodeError` with the code
+that computes the element address (`alsl.d` for 2, 4, 8 and 16 byte
+elements, `mul.d` for others). An indexed element needs `ldx`, `stx`,
+`fldx`, `fstx` or `preldx` and a field `ld`, `st`, `fld`, `fst` or
+`preld`; the error names the right one. A view's unsized `addr` works as
+an operand without a width check, and `a0 + 8` is only a base for
+`typed`: write `ld.w(a1, a0, 8)` for a plain load.
+
 ## aarch64
 
 `jita.aarch64` works like `jita.x64`. `Assembler()` picks it on an aarch64
@@ -587,6 +676,10 @@ all of them, like a label, so `call(ext)` works for a function within
 its address from the extern's pointer slot: `ld(t0, a.extern_slot(ext));
 jalr(t0)`.
 
+`typed(a0, T)` views memory as a ctypes structure, and its fields are
+`MemExpr`s that carry their size, checked against the access width (see
+Structures).
+
 Compressed instructions, the vector extension, `%hi`/`%lo` operators and
 GOT or PLT references are not supported. On a riscv64 host, loading code
 flushes the instruction cache through libgcc's `__clear_cache`, or the
@@ -640,19 +733,25 @@ as objdump does, `$a0`.
 | keyword mnemonics | `and_`, `or_`, `break_` | `and`, `or`, `break` |
 
 There is no `mem[...]`: as in GNU syntax a load or store takes the base
-register and the offset as plain operands. Mnemonics with dots are
+register and the offset as plain operands. A `MemExpr(base, offset)`, or
+`MemExpr(base, index=reg)` for `ldx` and the other indexed forms, stands
+for that pair and encodes the same, `ld.w(a0, MemExpr(a1, 8))` is
+`ld.w(a0, a1, 8)`. The fields of `typed(a0, T)` are such `MemExpr`s that
+also carry their size (see Structures). Mnemonics with dots are
 attributes of a namespace object, so `add` itself is not an instruction,
 `add.w` and `add.d` are, and the methods are `a.add.d(...)`. A dotted
 part that starts with a digit gets a leading underscore. Immediates are
 checked by value against their field as GNU as checks them: signed for
-`addi`, `slti`, `sltui`, `lu52i.d`, `addu16i.d`, loads and stores and the
-20 bit `lu12i.w`, `lu32i.d` and `pcadd*` (`lu12i.w(a0, -1)`, not
+`addi`, `slti`, `sltui`, `lu52i.d`, `addu16i.d`, loads and stores and
+the 20 bit `lu12i.w`, `lu32i.d` and `pcadd*` (`lu12i.w(a0, -1)`, not
 `0xfffff`); unsigned for `andi`, `ori`, `xori`, shift amounts, `break`,
 `dbar` and the other codes. The offsets of `ll`, `sc`, `ldptr`, `stptr`
-and `jirl` are byte offsets and must be multiples of 4. `alsl` takes the
-shift 1..4, `bstrins` and `bstrpick` need msb >= lsb, and the `am*`
-instructions (except `amswap.w`) reject an rd equal to rk or rj, as
-GNU as does.
+and `jirl` are byte offsets and must be multiples of 4. When `ld.w`,
+`ld.d`, `st.w` or `st.d` cannot encode an offset that its `ldptr` or
+`stptr` form can, or the other way round, the error names that
+instruction. `alsl` takes the shift 1..4, `bstrins` and `bstrpick` need
+msb >= lsb, and the `am*` instructions (except `amswap.w`) reject an rd
+equal to rk or rj, as GNU as does.
 
 Beyond the base instructions jita has the GNU as aliases `nop move ret
 jr ud`, `rdcntvl.w rdcntvh.w rdcntid.w`, the branches `bgt ble bgtu bleu`

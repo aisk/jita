@@ -15,6 +15,14 @@ words.
 Immediates are range checked by value and never truncated. The listing
 shows operands as objdump does: registers with a `$`, signed immediates
 in decimal, unsigned ones in hex.
+
+A memory operand (`MemExpr`, made by `typed()` or directly) stands for
+the base and offset or base and index operands and is listed as those
+operands. A typed() operand carries its field's size, and an access of
+another width (from the mnemonic, `ld.w` is 4 bytes) is rejected. An
+error in a memory operand slot lists the forms it takes, and an offset
+that ld.w cannot encode but ldptr.w can (or the other way round) names
+the other instruction.
 """
 
 from collections.abc import Sequence
@@ -22,7 +30,8 @@ from typing import Any
 
 from ..core.errors import EncodeError
 from ..core.labels import Extern, Label
-from ..core.operand import Imm
+from ..core.operand import Imm, Operand
+from .mem import Addr, MemExpr
 from .patch import B16, B21, B26, CALL36, PCALA, PCREL20
 from .regs import F, Fcc, Fcsr, R, Reg
 from .table import MAP_OP
@@ -52,11 +61,16 @@ _REG_WHAT = {
 class _Fail(Exception):
     """One template alternative rejected the operands. `rank` is 0 for an
     operand of the wrong kind and 1 for a bad value; `pos` is the operand
-    index. The failure with the highest (rank, pos) is reported."""
+    index. The failure with the highest (rank, pos) is reported; of two at
+    the same place, the one that `lists` the operand's valid forms (the
+    memory operand slot, see `_Alt.mem`) wins."""
 
-    def __init__(self, msg: str, pos: int, rank: int = 0):
+    def __init__(self, msg: str, pos: int, rank: int = 0, lists: bool = False):
         super().__init__(msg)
-        self.msg, self.pos, self.rank = msg, pos, rank
+        self.msg, self.pos, self.rank, self.lists = msg, pos, rank, lists
+
+    def key(self) -> tuple[int, int, bool]:
+        return self.rank, self.pos, self.lists
 
 
 def _is_int(x: Any) -> bool:
@@ -75,6 +89,87 @@ class _Hex(Imm):
 
     def __str__(self) -> str:
         return hex(self.value)
+
+
+class _Text(Operand):
+    """A listing operand shown as given text: the base and offset of a
+    memory operand, `$a1, 8`."""
+
+    __slots__ = ("text",)
+
+    def __init__(self, text: str):
+        self.text = text
+
+    def __str__(self) -> str:
+        return self.text
+
+
+# Access width by the last part of a mnemonic: ld.w, fld.s, ammax.du.
+_WIDTH = {"b": 1, "bu": 1, "h": 2, "hu": 2, "w": 4, "wu": 4, "s": 4, "d": 8, "du": 8}
+
+
+def _indexed(mnemonic: str) -> str | None:
+    """The register indexed form of a base + offset mnemonic, or the other
+    way round: ld.w and ldx.w, ldptr.d and ldx.d, preld and preldx."""
+    head, dot, rest = mnemonic.partition(".")
+    if head in ("ldptr", "stptr"):
+        head = head[:2]
+    pairs = {"ld": "ldx", "st": "stx", "fld": "fldx", "fst": "fstx", "preld": "preldx"}
+    back = {v: k for k, v in pairs.items()}
+    other = pairs.get(head) or back.get(head)
+    return None if other is None else other + dot + rest
+
+
+# ld.w and ldptr.w reach different offsets: any in -2048..2047, or a
+# multiple of 4 in -0x8000..0x7ffc. Only the w and d widths have both.
+_PTR_PAIRS = {"ld.w": "ldptr.w", "ld.d": "ldptr.d", "st.w": "stptr.w", "st.d": "stptr.d"}
+_PTR_PAIRS.update({v: k for k, v in _PTR_PAIRS.items()})
+
+
+def _offset_hint(mnemonic: str, n: int) -> str:
+    """A hint that names the other instruction of an ld/ldptr or st/stptr
+    pair when it encodes the offset `n` that `mnemonic` cannot, `; use
+    ldptr.w`, or an empty string."""
+    other = _PTR_PAIRS.get(mnemonic)
+    if other is None:
+        return ""
+    if other.startswith(("ldptr", "stptr")):
+        fits = not n & 3 and -(1 << 15) <= n < (1 << 15)
+    else:
+        fits = -2048 <= n <= 2047
+    return f"; use {other}" if fits else ""
+
+
+def _is_label(q: Any) -> bool:
+    return isinstance(q, (str, Label, Extern))
+
+
+def _memory_forms(mnemonic: str, form: str, params: list[Any]) -> str:
+    """Why the second of the two operands `params` cannot be the memory
+    operand (template letter `form`) of `mnemonic`, with the forms it can
+    take instead."""
+    first, q = params
+    if isinstance(first, Reg):
+        rd = first.name
+    else:
+        rd = {"d": "fd", "P": "hint"}.get(MAP_OP[f"{mnemonic}_2"].split("|")[0][8], "rd")
+        if rd == "hint" and _is_int(first):
+            rd = str(first)
+    if form == "r":
+        what = "a memory operand with an index register (a typed() element or MemExpr(base, index=...))"
+        return f"expected {what} or base, index operands, {mnemonic}({rd}, base, index)"
+    what = "a memory operand (a typed() field or MemExpr)"
+    if _is_label(q):
+        name = repr(q) if isinstance(q, str) else "label"
+        if any("L" in t[8:] for t in MAP_OP.get(f"{mnemonic}_3", "").split("|")):
+            kind = "load from" if mnemonic.startswith(("ld", "fld")) else "store to"
+            return f"a {kind} a label needs a scratch register for the address, {mnemonic}({rd}, {name}, tmp)"
+        return f"{mnemonic} cannot address a label; it takes {what} or base, offset operands"
+    label = "a label, " if "L" in MAP_OP[f"{mnemonic}_2"] else ""
+    msg = f"expected {label}{what} or base, offset operands, {mnemonic}({rd}, base, offset)"
+    if isinstance(q, R):
+        msg += f"; for the address in {q.name} write {mnemonic}({rd}, {q.name}, 0)"
+    return msg
 
 
 # -- li.w and li.d -----------------------------------------------------------
@@ -135,8 +230,9 @@ def li_words(rd: int, value: int, width: int = 64) -> list[int]:
 class _Alt:
     """Parses one template alternative."""
 
-    def __init__(self, asm: Any, params: list[Any]):
+    def __init__(self, asm: Any, params: list[Any], mnemonic: str = ""):
         self.asm = asm
+        self.mnemonic = mnemonic
         self.params = params
         self.shown: list[Any] = list(params)  # operands as listings print them
         self.n = 0
@@ -145,8 +241,8 @@ class _Alt:
         self.pair = ""  # "L", "l" or "O" for a two instruction sequence
         self.li: tuple[int, int] | None = None  # (value, width)
 
-    def fail(self, msg: str, rank: int = 0, pos: int | None = None) -> _Fail:
-        return _Fail(msg, self.n if pos is None else pos, rank)
+    def fail(self, msg: str, rank: int = 0, pos: int | None = None, lists: bool = False) -> _Fail:
+        return _Fail(msg, self.n if pos is None else pos, rank, lists)
 
     def param(self) -> Any:
         if self.n >= len(self.params):
@@ -176,7 +272,8 @@ class _Alt:
     def imm(self, lo: int, hi: int, what: str, hexfmt: bool = False) -> int:
         n = self.int_param()
         if not lo <= n <= hi:
-            raise self.fail(f"immediate {_fmt(n)} out of range ({what})", 1)
+            hint = _offset_hint(self.mnemonic, n)
+            raise self.fail(f"immediate {_fmt(n)} out of range ({what}){hint}", 1)
         self.shown[self.n] = _Hex(n) if hexfmt else Imm(n)
         self.next()
         return n
@@ -193,10 +290,11 @@ class _Alt:
         signed bits; returns the word count field."""
         lim = 1 << (bits + 1)
         n = self.int_param()
+        hint = _offset_hint(self.mnemonic, n)
         if n & 3:
-            raise self.fail(f"offset {_fmt(n)} is not a multiple of 4", 1)
+            raise self.fail(f"offset {_fmt(n)} is not a multiple of 4{hint}", 1)
         if not -lim <= n < lim:
-            raise self.fail(f"offset {_fmt(n)} out of range ({_fmt(-lim)}..{_fmt(lim - 4)})", 1)
+            raise self.fail(f"offset {_fmt(n)} out of range ({_fmt(-lim)}..{_fmt(lim - 4)}){hint}", 1)
         self.shown[self.n] = Imm(n)
         self.next()
         return (n >> 2) & ((1 << bits) - 1)
@@ -208,6 +306,75 @@ class _Alt:
         if msb < lsb:
             raise self.fail(f"msb {msb} is below lsb {lsb}", 1, self.n - 1)
         return msb << 16 | lsb << 10
+
+    # memory operands
+
+    def mem(self, form: str) -> tuple[int, int]:
+        """A `MemExpr` for the template letter `form` (m, n, r or b); the
+        base register and the offset or index field value to place."""
+        m = self.param()
+        mn = self.mnemonic
+        if isinstance(m, Addr):
+            if form == "r":
+                fix = f"{mn} adds an index register, write {m.base.name}, index"
+            elif form == "b":
+                fix = (
+                    f"write {m.base.name}"
+                    if not m.disp
+                    else f"{mn} takes a bare base, so addi.d the offset into a register first"
+                )
+            else:
+                fix = f"write {m.base.name}, {m.disp}"
+            raise self.fail(f"{m} is an address for typed(), not an operand; {fix}", 1)
+        if not isinstance(m, MemExpr):
+            if form == "b":
+                raise self.fail("expected an integer register or a memory operand with no offset", lists=True)
+            raise self.fail(_memory_forms(mn, form, self.params), lists=True)
+        if m.size is not None:
+            # jita: a typed() field knows its size, so the access must match.
+            width = _WIDTH.get(mn.rpartition(".")[2]) if "." in mn else None
+            if width is not None and m.size != width:
+                raise self.fail(f"typed() operand {m} holds {m.size} bytes, this access is {width} bytes", 1)
+        if form == "r":
+            if m.index is None:
+                other = _indexed(mn)
+                raise self.fail(f"{mn} takes a register indexed operand, {m} has no index; use {other}", 1)
+            self.shown[self.n] = _Text(f"{m.base}, {m.index}")
+            self.next()
+            return m.base.code, m.index.code
+        if m.index is not None:
+            other = _indexed(mn)
+            hint = (
+                f"use {other}"
+                if other is not None
+                else "add.d the index to the base into a register first and view the element there"
+            )
+            raise self.fail(f"{mn} cannot take the register indexed operand {m}; {hint}", 1)
+        n = m.disp
+        hint = _offset_hint(mn, n)
+        if form == "b":
+            if n:
+                raise self.fail(
+                    f"{mn} takes a bare base register, {m} is {n} bytes past {m.base}; "
+                    "addi.d the offset into a register first and view the field there",
+                    1,
+                )
+            self.shown[self.n] = _Text(str(m.base))
+            self.next()
+            return m.base.code, 0
+        if form == "m":
+            if not -2048 <= n <= 2047:
+                raise self.fail(f"offset {_fmt(n)} out of range (signed 12 bit, -0x800..0x7ff){hint}", 1)
+            field = n & 0xFFF
+        else:
+            if n & 3:
+                raise self.fail(f"offset {_fmt(n)} is not a multiple of 4{hint}", 1)
+            if not -(1 << 15) <= n < (1 << 15):
+                raise self.fail(f"offset {_fmt(n)} out of range ({_fmt(-(1 << 15))}..{_fmt((1 << 15) - 4)}){hint}", 1)
+            field = (n >> 2) & 0x3FFF
+        self.shown[self.n] = _Text(f"{m.base}, {n}")
+        self.next()
+        return m.base.code, field
 
     # labels
 
@@ -284,6 +451,14 @@ def _parse_template(t: str, alt: _Alt) -> int:
         elif p == "X":
             n = alt.unsigned(5)
             op |= n << 5 | n
+        elif p in "mn":
+            base, field = alt.mem(p)
+            op |= base << 5 | field << 10
+        elif p == "r":
+            base, index = alt.mem(p)
+            op |= base << 5 | index << 10
+        elif p == "b":
+            op |= alt.mem(p)[0] << 5
         elif p == "B":
             alt.label(B16)
         elif p == "R":
@@ -353,11 +528,11 @@ def _encode(asm: Any, mnemonic: str, ops: Sequence[Any]) -> None:
 
     best: _Fail | None = None
     for t in template.split("|"):
-        alt = _Alt(asm, params)
+        alt = _Alt(asm, params, mnemonic)
         try:
             word = _parse_template(t, alt)
         except _Fail as e:
-            if best is None or (e.rank, e.pos) > (best.rank, best.pos):
+            if best is None or e.key() > best.key():
                 best = e
             continue
         if alt.li is not None:

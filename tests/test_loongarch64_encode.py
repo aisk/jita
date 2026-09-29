@@ -647,6 +647,108 @@ CASES = [
     (ammin.du, (a0, a2, a1), "a4986838"),  # ammin.du $a0, $a2, $a1
     (ammin_db.wu, (a0, a2, a1), "a4187138"),  # ammin_db.wu $a0, $a2, $a1
     (ammin_db.du, (a0, a2, a1), "a4987138"),  # ammin_db.du $a0, $a2, $a1
+    # Memory operands (MemExpr, as typed() makes them) stand for the base
+    # and offset, or base and index, operands.
+    (ld.b, (a0, MemExpr(a1, -8)), "a4e03f28"),  # ld.b $a0, $a1, -8
+    (ld.h, (a0, MemExpr(a1, -8)), "a4e07f28"),  # ld.h $a0, $a1, -8
+    (ld.w, (a0, MemExpr(a1, -8)), "a4e0bf28"),  # ld.w $a0, $a1, -8
+    (ld.d, (a0, MemExpr(a1, -8)), "a4e0ff28"),  # ld.d $a0, $a1, -8
+    (ld.bu, (a0, MemExpr(a1, -8)), "a4e03f2a"),  # ld.bu $a0, $a1, -8
+    (ld.hu, (a0, MemExpr(a1, -8)), "a4e07f2a"),  # ld.hu $a0, $a1, -8
+    (ld.wu, (a0, MemExpr(a1, -8)), "a4e0bf2a"),  # ld.wu $a0, $a1, -8
+    (ldgt.b, (a0, MemExpr(a1), a2), "a4187838"),  # ldgt.b $a0, $a1, $a2
+    (ldgt.h, (a0, MemExpr(a1), a2), "a4987838"),  # ldgt.h $a0, $a1, $a2
+    (ldgt.w, (a0, MemExpr(a1), a2), "a4187938"),  # ldgt.w $a0, $a1, $a2
+    (ldgt.d, (a0, MemExpr(a1), a2), "a4987938"),  # ldgt.d $a0, $a1, $a2
+    (ldle.b, (a0, MemExpr(a1), a2), "a4187a38"),  # ldle.b $a0, $a1, $a2
+    (ldle.h, (a0, MemExpr(a1), a2), "a4987a38"),  # ldle.h $a0, $a1, $a2
+    (ldle.w, (a0, MemExpr(a1), a2), "a4187b38"),  # ldle.w $a0, $a1, $a2
+    (ldle.d, (a0, MemExpr(a1), a2), "a4987b38"),  # ldle.d $a0, $a1, $a2
+    (stgt.b, (a0, MemExpr(a1), a2), "a4187c38"),  # stgt.b $a0, $a1, $a2
+    (stgt.h, (a0, MemExpr(a1), a2), "a4987c38"),  # stgt.h $a0, $a1, $a2
+    (stgt.w, (a0, MemExpr(a1), a2), "a4187d38"),  # stgt.w $a0, $a1, $a2
+    (stgt.d, (a0, MemExpr(a1), a2), "a4987d38"),  # stgt.d $a0, $a1, $a2
+    (stle.b, (a0, MemExpr(a1), a2), "a4187e38"),  # stle.b $a0, $a1, $a2
+    (stle.h, (a0, MemExpr(a1), a2), "a4987e38"),  # stle.h $a0, $a1, $a2
+    (stle.w, (a0, MemExpr(a1), a2), "a4187f38"),  # stle.w $a0, $a1, $a2
+    (stle.d, (a0, MemExpr(a1), a2), "a4987f38"),  # stle.d $a0, $a1, $a2
+    (fldgt.s, (fa0, MemExpr(a1), a2), "a0187438"),  # fldgt.s $fa0, $a1, $a2
+    (fldgt.d, (fa0, MemExpr(a1), a2), "a0987438"),  # fldgt.d $fa0, $a1, $a2
+    (fldle.s, (fa0, MemExpr(a1), a2), "a0187538"),  # fldle.s $fa0, $a1, $a2
+    (fldle.d, (fa0, MemExpr(a1), a2), "a0987538"),  # fldle.d $fa0, $a1, $a2
+    (fstgt.s, (fa0, MemExpr(a1), a2), "a0187638"),  # fstgt.s $fa0, $a1, $a2
+    (fstgt.d, (fa0, MemExpr(a1), a2), "a0987638"),  # fstgt.d $fa0, $a1, $a2
+    (fstle.s, (fa0, MemExpr(a1), a2), "a0187738"),  # fstle.s $fa0, $a1, $a2
+    (fstle.d, (fa0, MemExpr(a1), a2), "a0987738"),  # fstle.d $fa0, $a1, $a2
+    (amswap.w, (a0, a2, MemExpr(a1)), "a4186038"),  # amswap.w $a0, $a2, $a1
+    (amswap.d, (a0, a2, MemExpr(a1)), "a4986038"),  # amswap.d $a0, $a2, $a1
+    (amswap_db.w, (a0, a2, MemExpr(a1)), "a4186938"),  # amswap_db.w $a0, $a2, $a1
+    (amswap_db.d, (a0, a2, MemExpr(a1)), "a4986938"),  # amswap_db.d $a0, $a2, $a1
+    (amadd.w, (a0, a2, MemExpr(a1)), "a4186138"),  # amadd.w $a0, $a2, $a1
+    (amadd.d, (a0, a2, MemExpr(a1)), "a4986138"),  # amadd.d $a0, $a2, $a1
+    (amadd_db.w, (a0, a2, MemExpr(a1)), "a4186a38"),  # amadd_db.w $a0, $a2, $a1
+    (amadd_db.d, (a0, a2, MemExpr(a1)), "a4986a38"),  # amadd_db.d $a0, $a2, $a1
+    (amand.w, (a0, a2, MemExpr(a1)), "a4186238"),  # amand.w $a0, $a2, $a1
+    (amand.d, (a0, a2, MemExpr(a1)), "a4986238"),  # amand.d $a0, $a2, $a1
+    (amand_db.w, (a0, a2, MemExpr(a1)), "a4186b38"),  # amand_db.w $a0, $a2, $a1
+    (amand_db.d, (a0, a2, MemExpr(a1)), "a4986b38"),  # amand_db.d $a0, $a2, $a1
+    (amor.w, (a0, a2, MemExpr(a1)), "a4186338"),  # amor.w $a0, $a2, $a1
+    (amor.d, (a0, a2, MemExpr(a1)), "a4986338"),  # amor.d $a0, $a2, $a1
+    (amor_db.w, (a0, a2, MemExpr(a1)), "a4186c38"),  # amor_db.w $a0, $a2, $a1
+    (amor_db.d, (a0, a2, MemExpr(a1)), "a4986c38"),  # amor_db.d $a0, $a2, $a1
+    (amxor.w, (a0, a2, MemExpr(a1)), "a4186438"),  # amxor.w $a0, $a2, $a1
+    (amxor.d, (a0, a2, MemExpr(a1)), "a4986438"),  # amxor.d $a0, $a2, $a1
+    (amxor_db.w, (a0, a2, MemExpr(a1)), "a4186d38"),  # amxor_db.w $a0, $a2, $a1
+    (amxor_db.d, (a0, a2, MemExpr(a1)), "a4986d38"),  # amxor_db.d $a0, $a2, $a1
+    (ammax.w, (a0, a2, MemExpr(a1)), "a4186538"),  # ammax.w $a0, $a2, $a1
+    (ammax.d, (a0, a2, MemExpr(a1)), "a4986538"),  # ammax.d $a0, $a2, $a1
+    (ammax_db.w, (a0, a2, MemExpr(a1)), "a4186e38"),  # ammax_db.w $a0, $a2, $a1
+    (ammax_db.d, (a0, a2, MemExpr(a1)), "a4986e38"),  # ammax_db.d $a0, $a2, $a1
+    (ammin.w, (a0, a2, MemExpr(a1)), "a4186638"),  # ammin.w $a0, $a2, $a1
+    (ammin.d, (a0, a2, MemExpr(a1)), "a4986638"),  # ammin.d $a0, $a2, $a1
+    (ammin_db.w, (a0, a2, MemExpr(a1)), "a4186f38"),  # ammin_db.w $a0, $a2, $a1
+    (ammin_db.d, (a0, a2, MemExpr(a1)), "a4986f38"),  # ammin_db.d $a0, $a2, $a1
+    (ammax.wu, (a0, a2, MemExpr(a1)), "a4186738"),  # ammax.wu $a0, $a2, $a1
+    (ammax.du, (a0, a2, MemExpr(a1)), "a4986738"),  # ammax.du $a0, $a2, $a1
+    (ammax_db.wu, (a0, a2, MemExpr(a1)), "a4187038"),  # ammax_db.wu $a0, $a2, $a1
+    (ammax_db.du, (a0, a2, MemExpr(a1)), "a4987038"),  # ammax_db.du $a0, $a2, $a1
+    (ammin.wu, (a0, a2, MemExpr(a1)), "a4186838"),  # ammin.wu $a0, $a2, $a1
+    (ammin.du, (a0, a2, MemExpr(a1)), "a4986838"),  # ammin.du $a0, $a2, $a1
+    (ammin_db.wu, (a0, a2, MemExpr(a1)), "a4187138"),  # ammin_db.wu $a0, $a2, $a1
+    (ammin_db.du, (a0, a2, MemExpr(a1)), "a4987138"),  # ammin_db.du $a0, $a2, $a1
+    (st.b, (a0, MemExpr(a1, -8)), "a4e03f29"),  # st.b $a0, $a1, -8
+    (st.h, (a0, MemExpr(a1, -8)), "a4e07f29"),  # st.h $a0, $a1, -8
+    (st.w, (a0, MemExpr(a1, -8)), "a4e0bf29"),  # st.w $a0, $a1, -8
+    (st.d, (a0, MemExpr(a1, -8)), "a4e0ff29"),  # st.d $a0, $a1, -8
+    (preld, (0, MemExpr(a1, -8)), "a0e0ff2a"),  # preld 0, $a1, -8
+    (ldx.b, (a0, MemExpr(a1, index=a2)), "a4180038"),  # ldx.b $a0, $a1, $a2
+    (ldx.h, (a0, MemExpr(a1, index=a2)), "a4180438"),  # ldx.h $a0, $a1, $a2
+    (ldx.w, (a0, MemExpr(a1, index=a2)), "a4180838"),  # ldx.w $a0, $a1, $a2
+    (ldx.d, (a0, MemExpr(a1, index=a2)), "a4180c38"),  # ldx.d $a0, $a1, $a2
+    (stx.b, (a0, MemExpr(a1, index=a2)), "a4181038"),  # stx.b $a0, $a1, $a2
+    (stx.h, (a0, MemExpr(a1, index=a2)), "a4181438"),  # stx.h $a0, $a1, $a2
+    (stx.w, (a0, MemExpr(a1, index=a2)), "a4181838"),  # stx.w $a0, $a1, $a2
+    (stx.d, (a0, MemExpr(a1, index=a2)), "a4181c38"),  # stx.d $a0, $a1, $a2
+    (ldx.bu, (a0, MemExpr(a1, index=a2)), "a4182038"),  # ldx.bu $a0, $a1, $a2
+    (ldx.hu, (a0, MemExpr(a1, index=a2)), "a4182438"),  # ldx.hu $a0, $a1, $a2
+    (ldx.wu, (a0, MemExpr(a1, index=a2)), "a4182838"),  # ldx.wu $a0, $a1, $a2
+    (preldx, (0, MemExpr(a1, index=a2)), "a0182c38"),  # preldx 0, $a1, $a2
+    (ldptr.w, (a0, MemExpr(a1, 8)), "a4080024"),  # ldptr.w $a0, $a1, 8
+    (stptr.w, (a0, MemExpr(a1, 8)), "a4080025"),  # stptr.w $a0, $a1, 8
+    (ldptr.d, (a0, MemExpr(a1, 8)), "a4080026"),  # ldptr.d $a0, $a1, 8
+    (stptr.d, (a0, MemExpr(a1, 8)), "a4080027"),  # stptr.d $a0, $a1, 8
+    (ll.w, (a0, MemExpr(a1, 8)), "a4080020"),  # ll.w $a0, $a1, 8
+    (sc.w, (a0, MemExpr(a1, 8)), "a4080021"),  # sc.w $a0, $a1, 8
+    (ll.d, (a0, MemExpr(a1, 8)), "a4080022"),  # ll.d $a0, $a1, 8
+    (sc.d, (a0, MemExpr(a1, 8)), "a4080023"),  # sc.d $a0, $a1, 8
+    (fld.s, (fa0, MemExpr(a1, -8)), "a0e03f2b"),  # fld.s $fa0, $a1, -8
+    (fst.s, (fa0, MemExpr(a1, -8)), "a0e07f2b"),  # fst.s $fa0, $a1, -8
+    (fld.d, (fa0, MemExpr(a1, -8)), "a0e0bf2b"),  # fld.d $fa0, $a1, -8
+    (fst.d, (fa0, MemExpr(a1, -8)), "a0e0ff2b"),  # fst.d $fa0, $a1, -8
+    (fldx.s, (fa0, MemExpr(a1, index=a2)), "a0183038"),  # fldx.s $fa0, $a1, $a2
+    (fldx.d, (fa0, MemExpr(a1, index=a2)), "a0183438"),  # fldx.d $fa0, $a1, $a2
+    (fstx.s, (fa0, MemExpr(a1, index=a2)), "a0183838"),  # fstx.s $fa0, $a1, $a2
+    (fstx.d, (fa0, MemExpr(a1, index=a2)), "a0183c38"),  # fstx.d $fa0, $a1, $a2
 ]
 
 # Label targets: (fn, ops, backward, forward). Backward: the label is bound
@@ -709,9 +811,19 @@ def mnemonic(fn) -> str:
     return _TEXT_NAMES.get(name, name)
 
 
+def _gnu_operand(o):
+    # A MemExpr is the base and offset, or base and index, operands. The
+    # bare base forms (am*, ldgt) take cases with no offset.
+    if isinstance(o, MemExpr):
+        if o.index is not None:
+            return f"{o.base}, {o.index}"
+        return f"{o.base}, {o.disp}" if o.disp else str(o.base)
+    return str(o)
+
+
 def gnu_text(fn, ops):
     name = mnemonic(fn)
-    return name + (" " + ", ".join(str(o) for o in ops) if ops else "")
+    return name + (" " + ", ".join(map(_gnu_operand, ops)) if ops else "")
 
 
 def _case_id(case):
@@ -753,9 +865,16 @@ def test_every_mnemonic_is_tested():
     # Every operand count of every mnemonic, and every template alternative.
     counts = {(mnemonic(c[0]), len(c[1])) for c in CASES + LABEL_CASES}
     assert {(m, n) for m, ns in MNEMONIC_ARGC.items() for n in ns} - counts == set()
-    alts = {k for k, t in MAP_OP.items() if "|" in t}
+    def letters(t, which):
+        return any(set(alt[8:]) & set(which) for alt in t.split("|"))
+
+    alts = {k for k, t in MAP_OP.items() if "|" in t and letters(t, "LlO")}
     labelled = {f"{mnemonic(c[0])}_{len(c[1])}" for c in LABEL_CASES}
     assert alts <= labelled
+    # Every memory operand alternative has a case with a MemExpr.
+    mems = {k for k, t in MAP_OP.items() if letters(t, "mnrb")}
+    with_mem = {f"{mnemonic(c[0])}_{len(c[1])}" for c in CASES if any(isinstance(o, MemExpr) for o in c[1])}
+    assert mems <= with_mem
 
 
 # -- li.w and li.d ---------------------------------------------------------------
@@ -1274,10 +1393,58 @@ def test_every_register_number(n):
         (break_, (-1,), "unsigned 15 bit"),  # noqa: F405
         (preld, (32, a0, 0), "unsigned 5 bit"),  # noqa: F405
         (ud, (32,), "unsigned 5 bit"),  # noqa: F405
-        (ld.d, (a0, a1, 2048), "signed 12 bit"),  # noqa: F405
-        (ld.d, (a0, a1), "expected a label"),  # noqa: F405
-        (ld.d, (a0, 8), "expected a label"),  # noqa: F405
-        (st.d, (a0, a1), "expects 3 operands"),  # noqa: F405
+        (ld.d, (a0, a1, 2048), r"signed 12 bit, -0x800..0x7ff\); use ldptr.d$"),  # noqa: F405
+        (st.w, (a0, a1, -32768), r"signed 12 bit, -0x800..0x7ff\); use stptr.w$"),  # noqa: F405
+        (st.d, (a0, a1, 32764), r"signed 12 bit, -0x800..0x7ff\); use stptr.d$"),  # noqa: F405
+        # No hint when the other form cannot encode the offset either.
+        (ld.w, (a0, a1, 2050), r"signed 12 bit, -0x800..0x7ff\)$"),  # noqa: F405
+        (ld.d, (a0, a1, 32768), r"signed 12 bit, -0x800..0x7ff\)$"),  # noqa: F405
+        (ld.wu, (a0, a1, 4096), r"signed 12 bit, -0x800..0x7ff\)$"),  # noqa: F405
+        (ldptr.w, (a0, a1, 6), r"offset 6 is not a multiple of 4; use ld.w$"),  # noqa: F405
+        (stptr.d, (a0, a1, -2047), r"offset -0x7ff is not a multiple of 4; use st.d$"),  # noqa: F405
+        (ldptr.d, (a0, a1, 2050), r"offset 0x802 is not a multiple of 4$"),  # noqa: F405
+        (ll.w, (a0, a1, 6), r"offset 6 is not a multiple of 4$"),  # noqa: F405
+        (sc.d, (a0, a1, 2), r"offset 2 is not a multiple of 4$"),  # noqa: F405
+        (
+            ld.d,  # noqa: F405
+            (a0, a1),
+            r"^ld.d: no encoding for \(a0, a1\): expected a label, a memory operand \(a typed\(\) field or MemExpr\) "
+            r"or base, offset operands, ld.d\(a0, base, offset\); for the address in a1 write ld.d\(a0, a1, 0\)$",
+        ),
+        (ld.d, (a0, 8), r"expected a label, a memory operand .*, ld.d\(a0, base, offset\)$"),  # noqa: F405
+        (
+            st.d,  # noqa: F405
+            (a0, a1),
+            r"^st.d: no encoding for \(a0, a1\): expected a memory operand \(a typed\(\) field or MemExpr\) "
+            r"or base, offset operands, st.d\(a0, base, offset\); for the address in a1 write st.d\(a0, a1, 0\)$",
+        ),
+        (fld.s, (fa0, 8), r"expected a memory operand .*, fld.s\(fa0, base, offset\)$"),  # noqa: F405
+        (preld, (0, a1), r"; for the address in a1 write preld\(0, a1, 0\)$"),  # noqa: F405
+        # A load or store to a label names a scratch register for the address.
+        (
+            st.w,  # noqa: F405
+            (a1, "lbl"),
+            r"^st.w: no encoding for \(a1, 'lbl'\): "
+            r"a store to a label needs a scratch register for the address, st.w\(a1, 'lbl', tmp\)$",
+        ),
+        (fld.s, (fa0, "lbl"), r"a load from a label needs a scratch .*, fld.s\(fa0, 'lbl', tmp\)$"),  # noqa: F405
+        (fst.d, (fa0, Label()), r"a store to a label needs a scratch .*, fst.d\(fa0, label, tmp\)$"),  # noqa: F405
+        (
+            ldptr.d,  # noqa: F405
+            (a0, "lbl"),
+            r"ldptr.d cannot address a label; it takes a memory operand \(a typed\(\) field or MemExpr\) "
+            r"or base, offset operands$",
+        ),
+        (ll.w, (a0, Extern("x")), r"ll.w cannot address a label"),  # noqa: F405
+        (
+            ldx.w,  # noqa: F405
+            (a0, a1),
+            r"expected a memory operand with an index register \(a typed\(\) element or MemExpr\(base, index=...\)\) "
+            r"or base, index operands, ldx.w\(a0, base, index\)$",
+        ),
+        (amadd.d, (a0, a1, 5), r"expected an integer register or a memory operand with no offset$"),  # noqa: F405
+        (ldgt.b, (a0, 5, a2), r"expected an integer register or a memory operand with no offset$"),  # noqa: F405
+        (ldgt.b, (a0, a1, 5), r"expected an integer register$"),  # noqa: F405
         (amadd.d, (a0, a0, a1), "rd must differ"),  # noqa: F405
         (amadd_db.w, (a0, a1, a0), "rd must differ"),  # noqa: F405
         (ammin_db.du, (t0, t0, a1), "rd must differ"),  # noqa: F405
@@ -1433,8 +1600,16 @@ def _random_operands(template, rng):
             ops.append((rng.getrandbits(bits) - (1 << (bits - 1))) * 4)
         elif p == "q":
             ops.append(rng.randrange(1, 5))
+        elif p in "mn":
+            v = rng.getrandbits(12) - 2048 if p == "m" else (rng.getrandbits(14) - (1 << 13)) * 4
+            ops.append(MemExpr(gpr(rng.randrange(32)), v))  # noqa: F405
+        elif p == "r":
+            ops.append(MemExpr(gpr(rng.randrange(32)), index=gpr(rng.randrange(32))))  # noqa: F405
+        elif p == "b":
+            ops.append(MemExpr(gpr(rng.randrange(32))))  # noqa: F405
         elif p == "!":
-            if ops[0].code and ops[0] in (ops[1], ops[2]):
+            regs = [o.base if isinstance(o, MemExpr) else o for o in ops]
+            if regs[0].code and regs[0] in (regs[1], regs[2]):
                 return None
         elif p != "=":
             return None  # labels and li are covered elsewhere

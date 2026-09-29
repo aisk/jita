@@ -1,4 +1,4 @@
-"""loongarch64 architecture: registers and mnemonic functions."""
+"""loongarch64 architecture: registers, memory operands and mnemonic functions."""
 
 # __all__ is computed; the stub next to this module carries it literally.
 # pyright: reportUnsupportedDunderAll=false
@@ -11,11 +11,14 @@ from typing import Any
 from ..core.arch import Arch
 from ..core.assembler import label
 from . import insns as _insns
+from . import mem as _mem
 from . import regs as _regs
 from .insns import *  # noqa: F403
 from .insns import INSNS as _INSNS
 from .insns import Loongarch64Assembler
+from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
+from .structs import typed
 
 NOP = b"\x00\x00\x40\x03"  # 03400000, andi zero, zero, 0
 
@@ -98,14 +101,17 @@ def _stub_flush() -> Callable[[int, int], None]:
 
 ARCH = Loongarch64Arch()
 
-# Keep `from jita.loongarch64 import *` to registers, mnemonics, ARCH and
-# the arch classes; helper imports and submodule names are not exported.
+# Keep `from jita.loongarch64 import *` to registers, `MemExpr`, mnemonics,
+# `typed`, ARCH and the arch classes; helper imports and submodule names
+# are not exported.
 # `__init__.pyi` carries the same list literally.
 __all__ = [
     "ARCH",
     "Loongarch64Arch",
     "Loongarch64Assembler",
     "label",
+    "typed",
     *_insns.__all__,
+    *_mem.__all__,
     *_regs.__all__,
 ]

@@ -6,7 +6,9 @@
 RISC-V has one addressing mode, a base register plus a signed 12 bit
 offset; the encoder checks the range. There are no size prefixes: the
 access width comes from the instruction (`lb`, `lhu`, `ld`, `flw`,
-`fsd`). The atomic instructions take `mem[a0]` with no offset, written
+`fsd`). The operands that `typed()` makes for ctypes fields carry the
+field's size, and the encoder rejects an instruction whose access width
+differs. The atomic instructions take `mem[a0]` with no offset, written
 `(a0)` in GNU syntax. Load a label with `ld(a0, lbl)` or its address with
 `lla(a0, lbl)` instead of a memory operand.
 """
@@ -59,16 +61,23 @@ class Addr:
 class MemExpr(Operand):
     """`disp(base)`: an integer base register plus an offset. Validated on
     construction; the offset range (signed 12 bit, 0 for atomics) is
-    checked by the encoder."""
+    checked by the encoder.
+
+    `size` is None for `mem[...]`. `typed()` sets it to the field size
+    (1, 2, 4 or 8), and the encoder then requires the instruction to access
+    that many bytes. It is left out of the text."""
 
     base: X
     disp: int = 0
+    size: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.base, X):
             raise EncodeError(f"{self.base} cannot be a memory base (use an integer register)")
         if not _is_int(self.disp):
             raise EncodeError(f"offset {self.disp!r} is not an int")
+        if self.size is not None and not (_is_int(self.size) and self.size in (1, 2, 4, 8)):
+            raise EncodeError(f"memory operand size {self.size!r} is not 1, 2, 4 or 8")
 
     def __str__(self) -> str:
         return f"{self.disp}({self.base})"

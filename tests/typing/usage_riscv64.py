@@ -1,9 +1,16 @@
-"""Accepted riscv64 code beyond single calls. Must type check cleanly
-(tests/test_typing.py)."""
+"""Accepted riscv64 code beyond single calls, typed views included. Must
+type check cleanly (tests/test_typing.py)."""
+
+import ctypes
 
 from jita import Assembler, Extern, Label
 from jita.riscv64 import *  # noqa: F403
 from jita.riscv64 import CsrName, F, FenceSet, Riscv64Assembler, Rm, X
+from jita.riscv64.structs import Typed, TypedArray
+
+
+class Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("tag", ctypes.c_uint8), ("v", ctypes.c_double * 4)]
 
 
 def load_pair(dst: X, src: X, base: X) -> None:
@@ -63,3 +70,15 @@ with a:
     assert fs0 is fpr(8)
     j("entry")
     tail("entry")
+# Typed views: fields are Any, `addr` is an unsized MemExpr.
+p: Typed = typed(a0, Point)
+lw(a1, p.x)
+lbu(a2, p.tag)
+fld(fa0, p.v[1])
+sw(a1, p["x"])
+amoadd.w(a1, a2, p.x)
+start: MemExpr = p.addr
+ld(a1, start)
+arr: TypedArray = typed(a2 + 8, ctypes.c_int32 * 4)
+lw(a1, arr[3])
+lw(a1, typed(mem[sp + 16], ctypes.c_int32))

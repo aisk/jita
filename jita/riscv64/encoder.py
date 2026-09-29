@@ -15,6 +15,10 @@ Immediates are range checked by value and never truncated. The listing
 shows operands as objdump does: I-type immediates in decimal, U-type
 fields, shift amounts and unnamed CSR numbers in hex, `(a0)` for the
 address of an atomic.
+
+A memory operand from `typed()` carries its field's size, and a load,
+store or atomic of another width is rejected. jalr takes an address to
+jump to, not a field to load, so it rejects typed() operands.
 """
 
 from collections.abc import Sequence
@@ -229,17 +233,28 @@ class _Alt:
 
     # addresses
 
-    def mem(self, kind: str) -> int:
+    def mem(self, kind: str, op: int) -> int:
         m = self.param()
         if isinstance(m, Addr):
             raise self.fail(f"wrap the address in mem[...]: mem[{m}]", 1)
         if not isinstance(m, MemExpr):
             raise self.fail("expected a memory operand")
+        if m.size is not None:
+            # jita: a typed() field knows its size, so the access must match.
+            if op & 0x7F == 0x67:
+                raise self.fail(
+                    f"jalr jumps to the address of typed() operand {m} and does not load it; "
+                    "load the field into a register and jalr that register",
+                    1,
+                )
+            width = 1 << ((op >> 12) & 3)  # funct3 of loads, stores, F/D and A
+            if m.size != width:
+                raise self.fail(f"typed() operand {m} holds {m.size} bytes, this access is {width} bytes", 1)
         n = m.disp
         op = m.base.code << 15
         if kind == "A":
             if n:
-                raise self.fail(f"atomic address takes no offset, got {n}", 1)
+                raise self.fail(f"atomic address takes no offset, got {n}; addi the offset into a register first", 1)
             self.shown[self.n] = _Text(f"({m.base})")
         elif not -2048 <= n <= 2047:
             raise self.fail(f"offset {_fmt(n)} out of range (signed 12 bit, -2048..2047)", 1)
@@ -296,7 +311,7 @@ def _parse_template(t: str, alt: _Alt) -> int:
         elif p == "K":
             op |= alt.imm(0, 31, "unsigned 5 bit, 0..31") << 15
         elif p in "LSA":
-            op |= alt.mem(p)
+            op |= alt.mem(p, op)
         elif p == "B":
             alt.label()
             alt.branch = B12

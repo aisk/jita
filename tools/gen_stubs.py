@@ -47,6 +47,7 @@ from jita.core.errors import EncodeError  # noqa: E402
 from jita.core.labels import Label  # noqa: E402
 from jita.loongarch64 import encoder as la_encoder  # noqa: E402
 from jita.loongarch64 import insns as la_insns  # noqa: E402
+from jita.loongarch64 import mem as la_mem  # noqa: E402
 from jita.loongarch64 import regs as la_regs  # noqa: E402
 from jita.loongarch64.table import MAP_OP as LA_OP  # noqa: E402
 from jita.riscv64 import encoder as rv_encoder  # noqa: E402
@@ -589,7 +590,7 @@ def rv_oracle(filtered: bool = True, max_arity: int | None = None) -> RvResult:
 
 # -- loongarch64 -----------------------------------------------------------------
 
-LA_CLASSES = ["R", "F", "Fcc", "Fcsr", "int", "Target"]
+LA_CLASSES = ["R", "F", "Fcc", "Fcsr", "int", "Mem", "Target"]
 
 
 def _la_reps() -> dict[str, list[Any]]:
@@ -601,6 +602,9 @@ def _la_reps() -> dict[str, list[Any]]:
         "Fcc": [r.fcc1],
         "Fcsr": [r.fcsr1],
         "int": [0, 1, 4, 31, 63, 2047, -1, 0x7FFFF, 1 << 40],
+        # A base and a register indexed operand; a3 as the base leaves an
+        # am* rd that differs from it.
+        "Mem": [la_mem.MemExpr(r.a3), la_mem.MemExpr(r.a3, index=r.a2)],
         "Target": [Label("target")],
     }
 
@@ -616,6 +620,7 @@ _LA_LETTER: dict[str, list[list[str]]] = {
     **{c: [["int"]] for c in "iuhzwxpoqyYUPX#%"},
     **{c: [["int"], ["int"]] for c in "MN"},
     **{c: [["Target"]] for c in "BRTVLlO"},
+    **{c: [["Mem"]] for c in "mnrb"},
 }
 
 
@@ -1018,7 +1023,7 @@ def render_rv_insns(res: RvResult) -> str:
     )
 
 
-LA_NAMES = {"int": "_Imm", "Target": "_Target"}
+LA_NAMES = {"int": "_Imm", "Target": "_Target", "Mem": "MemExpr"}
 
 LA_DOTTED = _Dotted(la_insns, la_encoder.MNEMONIC_ARGC, LA_CLASSES, LA_NAMES, part=la_insns.py_part)
 
@@ -1026,6 +1031,7 @@ LA_DOTTED = _Dotted(la_insns, la_encoder.MNEMONIC_ARGC, LA_CLASSES, LA_NAMES, pa
 def render_la_insns(res: RvResult) -> str:
     return LA_DOTTED.render(
         res.points,
+        "from .mem import MemExpr\n"
         "from .regs import F, Fcc, Fcsr, R\n",
         "\nclass Loongarch64Assembler(Assembler):\n"
         '    """An Assembler for loongarch64. `Assembler("loongarch64")` returns\n'
@@ -1100,7 +1106,8 @@ def render_rv_init() -> str:
         "from .insns import *\n"
         "from .insns import Riscv64Assembler as Riscv64Assembler\n"
         "from .mem import *\n"
-        "from .regs import *\n\n"
+        "from .regs import *\n"
+        "from .structs import typed as typed\n\n"
         "NOP: bytes\n"
         "SYS_RISCV_FLUSH_ICACHE: int\n\n"
         "class Riscv64Arch(Arch):\n"
@@ -1129,7 +1136,9 @@ def render_la_init() -> str:
         "from ..core.assembler import label as label\n"
         "from .insns import *\n"
         "from .insns import Loongarch64Assembler as Loongarch64Assembler\n"
-        "from .regs import *\n\n"
+        "from .mem import *\n"
+        "from .regs import *\n"
+        "from .structs import typed as typed\n\n"
         "NOP: bytes\n"
         "IBAR_RET: bytes\n\n"
         "class Loongarch64Arch(Arch):\n"
@@ -1159,7 +1168,9 @@ A64_EXPR = {
     "RegModX": "(x2 << 3)", "RegModW": "w2.uxtw()", "Mod": 'Mod("lsl", 16)', "int": "1",
     "float": "1.5", "Mem": "mem[x3]", "Target": '"lbl"', "Cond": '"eq"', "Bti": '"c"',
 }  # fmt: skip
-LA_EXPR = {"R": "a1", "F": "fa1", "Fcc": "fcc1", "Fcsr": "fcsr1", "int": "1", "Target": '"lbl"'}
+LA_EXPR = {
+    "R": "a1", "F": "fa1", "Fcc": "fcc1", "Fcsr": "fcsr1", "int": "1", "Mem": "MemExpr(a3)", "Target": '"lbl"',
+}  # fmt: skip
 RV_EXPR = {
     "X": "a1", "F": "fa1", "int": "1", "Mem": "mem[a3]", "Target": '"lbl"', "Csr": '"fflags"',
     "Fence": '"rw"',

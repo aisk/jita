@@ -3,6 +3,8 @@ line carries the exact ignore comment of both checkers, and unused
 ignores are errors, so a line that stops being an error fails the check
 (tests/test_typing.py)."""
 
+import ctypes
+
 from jita import Assembler
 from jita.riscv64 import *  # noqa: F403
 
@@ -44,3 +46,16 @@ def operands() -> None:
     mem[8]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
     mem[a0, 8]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
     mem[fa0]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
+
+
+class Pair(ctypes.Structure):
+    _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64 * 2)]
+
+
+def views() -> None:
+    typed(8, Pair)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
+    typed(a0, Pair())  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
+    ld(a1, typed(a0, Pair))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    ld(a1, typed(a0, ctypes.c_int64 * 2))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    typed(a0, ctypes.c_int64 * 2)["a"]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
+    typed(a0, ctypes.c_int64 * 2)[a1]  # type: ignore[index]  # pyright: ignore[reportArgumentType]

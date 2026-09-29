@@ -42,6 +42,18 @@ every operand field zero, followed by one character per operand action:
   !         rd must differ from rk and rj unless it is zero (am*)
   ~         rj must differ from rd (a store to a label: pcalau12i into the
             register being stored would overwrite the value)
+  m n       memory operand (`MemExpr`, built or from typed()) with base
+            and offset: base into rj, offset as i (m) or as p (n)
+  r         memory operand with base and index: base into rj, index
+            into rk
+  b         memory operand with a bare base, no offset: base into rj
+            (am*, ldgt and friends)
+
+A memory operand stands for the base and offset, or base and index,
+operands of the same instruction, so `ld.w_2` takes `rd, mem` where
+`ld.w_3` takes `rd, rj, si12`. The access width comes from the
+mnemonic's last part (b, h, w, d, bu, hu, wu, du, s) and a typed()
+operand of another size is rejected; preld and preldx have no width.
 """
 
 MAP_OP: dict[str, str] = {
@@ -403,6 +415,33 @@ def _generated() -> None:
                 word = 0x38600000 + i * 0x10000 + half * 0x8000 + (0x90000 if db else 0)
                 check = "" if name == "amswap" and db == "" and width == "w" else "!"
                 MAP_OP[f"{name}{db}.{width}_3"] = f"{word:08x}DKJ{check}"
+    _memory()
+
+
+def _memory() -> None:
+    # The memory operand forms of the loads, stores, prefetches and
+    # atomics, next to their register forms (see m, n, r, b above).
+    for key, tpl in list(MAP_OP.items()):
+        name = key.rpartition("_")[0]
+        head = name.split(".")[0]
+        first = tpl.split("|")[0]
+        word, ops = first[:8], first[8:]
+        if head in ("ld", "st", "fld", "fst", "preld") and ops in ("DJi", "dJi", "PJi"):
+            form = f"{word}{ops[0]}m"
+        elif head in ("ldx", "stx", "fldx", "fstx", "preldx"):
+            form = f"{word}{ops[0]}r"
+        elif head in ("ldptr", "stptr", "ll", "sc"):
+            form = f"{word}{ops[0]}n"
+        elif head in ("ldgt", "ldle", "stgt", "stle", "fldgt", "fldle", "fstgt", "fstle"):
+            MAP_OP[key] = f"{tpl}|{word}{ops[0]}bK"
+            continue
+        elif head.startswith("am") and ops.startswith("DKJ"):
+            MAP_OP[key] = f"{tpl}|{word}DKb{ops[3:]}"
+            continue
+        else:
+            continue
+        two = f"{name}_2"
+        MAP_OP[two] = f"{MAP_OP[two]}|{form}" if two in MAP_OP else form
 
 
 _generated()

@@ -19,6 +19,7 @@ from .insns import INSNS as _INSNS
 from .insns import Riscv64Assembler
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
+from .structs import typed
 
 NOP = b"\x13\x00\x00\x00"  # 00000013, addi zero, zero, 0
 
@@ -98,13 +99,14 @@ def _syscall_flush() -> Callable[[int, int], None]:
 ARCH = Riscv64Arch()
 
 # Keep `from jita.riscv64 import *` to registers, memory operands, mnemonics,
-# ARCH and the arch classes; helper imports and submodule names are not
-# exported. `__init__.pyi` carries the same list literally.
+# `typed`, ARCH and the arch classes; helper imports and submodule names
+# are not exported. `__init__.pyi` carries the same list literally.
 __all__ = [
     "ARCH",
     "Riscv64Arch",
     "Riscv64Assembler",
     "label",
+    "typed",
     *_insns.__all__,
     *_mem.__all__,
     *_regs.__all__,
