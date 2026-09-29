@@ -3,11 +3,17 @@ line carries the exact ignore comment of both checkers, and unused
 ignores are errors, so a line that stops being an error fails the check
 (tests/test_typing.py)."""
 
+import ctypes
+
 from jita import Assembler
 from jita.aarch64 import *  # noqa: F403
 from jita.aarch64 import Mod
 
 a = Assembler("aarch64")
+
+
+class Pair(ctypes.Structure):
+    _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64 * 2)]
 
 
 def calls() -> None:
@@ -55,6 +61,14 @@ def operands() -> None:
     _ = (x0 + 8) + mem[x1]  # type: ignore[operator]  # pyright: ignore[reportOperatorIssue]
     gp64("3")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     Mod("lsl", "3")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def views() -> None:
+    typed(8, Pair)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
+    typed(x0, Pair())  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]
+    ldr(x1, typed(x0, Pair))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    ldr(x1, typed(x0, ctypes.c_int64 * 2))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    typed(x0, ctypes.c_int64 * 2)["a"]  # type: ignore[index]  # pyright: ignore[reportArgumentType]
 
 
 def names() -> None:

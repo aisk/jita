@@ -10,13 +10,15 @@
     mem.post[x0, 16]            [x0], #16           post-index, writes back
 
 There are no size prefixes: the access width comes from the instruction
-(`ldrb`, `ldrh`, `ldr w0`, `ldr x0`, `ldr d0`, ...). Whether an offset is
+(`ldrb`, `ldrh`, `ldr w0`, `ldr x0`, `ldr d0`, ...). The operands that
+`typed()` makes for ctypes fields carry the field's size, and the encoder
+rejects an instruction whose access width differs. Whether an offset is
 encoded scaled (`ldr`) or unscaled (`ldur`) is decided by the encoder from
 the value, as DynASM does. Load a label or an Extern's address with
 `ldr(x0, lbl)` (pc-relative literal) instead of a memory operand.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, NoReturn, TypeGuard
 
 from ..core.errors import EncodeError
@@ -85,13 +87,23 @@ class MemExpr(Operand):
     """`[base, #disp]`, `[base, index{, extend}]`, `[base, #disp]!` or
     `[base], #disp`. `mode` is "offset", "pre" or "post". Validated on
     construction; offset ranges depend on the instruction and are checked
-    by the encoder."""
+    by the encoder.
+
+    `size` is None for `mem[...]`. `typed()` sets it to the field size
+    (1, 2, 4 or 8), and the encoder then requires the instruction to access
+    that many bytes (per register for ldp/stp). `extent` is the number of
+    bytes from the address to the end of what `typed()` knows is there:
+    the rest of the array for an array element, the field itself otherwise,
+    None when unbounded. ldp/stp must stay within it. It is a bound, not
+    part of the address, so it is left out of equality and of the text."""
 
     base: Reg
     index: Reg | None = None
     mod: Mod | None = None
     disp: int = 0
     mode: str = "offset"
+    size: int | None = None
+    extent: int | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         base, index, mod = self.base, self.index, self.mod
@@ -101,6 +113,10 @@ class MemExpr(Operand):
             raise EncodeError(f"bad addressing mode {self.mode!r}")
         if not _is_int(self.disp):
             raise EncodeError(f"offset {self.disp!r} is not an int")
+        if self.size is not None and not (_is_int(self.size) and self.size in (1, 2, 4, 8)):
+            raise EncodeError(f"memory operand size {self.size!r} is not 1, 2, 4 or 8")
+        if self.extent is not None and (self.size is None or not _is_int(self.extent) or self.extent < self.size):
+            raise EncodeError(f"memory operand extent {self.extent!r} does not cover its size {self.size!r}")
         if index is None:
             if mod is not None:
                 raise EncodeError("shift or extend without an index register")

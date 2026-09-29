@@ -43,9 +43,12 @@ riscv64 `and_`, `or_`, `not_`, `min_` and `max_` (also `a.min`, `a.max`);
 on loongarch64 `and_`, `or_` and `break_`.
 `from jita.x64 import *` exports registers and their classes, size
 prefixes, `label`, `typed`, the mnemonics and the architecture classes,
-and nothing else. The mnemonic functions set `__test__ = False`, so
-pytest does not collect the x64 `test` instruction from a test module
-that imports it with `*`.
+and nothing else. `from jita.aarch64 import *` exports registers, their
+classes and selectors such as `gp64`, `mem`, the operand types `MemExpr`,
+`Mod`, `RegMod` and `Cond`, `label`, `typed`, the mnemonics and the
+architecture classes. The mnemonic functions set
+`__test__ = False`, so pytest does not collect the x64 `test`
+instruction from a test module that imports it with `*`.
 
 ## Sections
 
@@ -347,6 +350,58 @@ that clashes with those names is reached as `p["size"]`. Pointer fields are
 not followed: load the pointer and call `typed` on the register again. Bit
 fields and `c_longdouble` have no memory operand and raise `EncodeError`.
 
+`jita.aarch64` has `typed` too, with a register, `x0 + 16` or `mem[...]`
+as the base.
+
+```python
+import ctypes
+from jita import Assembler
+from jita.aarch64 import *
+
+class Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32), ("tag", ctypes.c_uint8),
+                ("next", ctypes.c_void_p), ("v", ctypes.c_double * 4)]
+
+p = typed(x0, Point)
+with Assembler("aarch64"):
+    ldr(w1, p.x)                  # [x0]
+    ldrb(w2, p.tag)               # [x0, #8]
+    ldr(d0, p.v[1])               # [x0, #32]
+    ldr(x3, p.next)               # [x0, #16]
+    add(x4, x0, Point.v.offset)
+    ldr(d1, typed(x4, ctypes.c_double * 4)[x5])        # [x4, x5, lsl #3]
+    ldr(w6, typed(x1, ctypes.c_int32 * 8)[w2.uxtw()])  # [x1, w2, uxtw #2]
+```
+
+aarch64 memory operands have no size prefix, so a field's `MemExpr`
+carries its size and a load or store of another width raises `EncodeError`
+(`ldr(x1, p.x)` with a 4 byte `x`); `ldp` and `stp` check the size of one
+register. `mem[p.x]` is the same operand, size included. Offsets are
+encoded like any other, scaled when aligned and in range, otherwise as
+`ldur` within -256..255, so a field that is both misaligned and outside
+-256..255 fails to encode and needs its offset added to a register first.
+A register index becomes `[base, Xm, lsl #s]` with the element size as
+the shift; an `x` index may also be `.sxtx()`, and a `w` index needs
+`.uxtw()` or `.sxtw()`. That addressing mode has no displacement and
+scales only by the access size, so the array has to start at the base
+(not `p.v[x5]` at offset 24) and the scalar accessed must fill the
+element: the element itself, or a field at offset 0 as wide as the element
+(`typed(x1, Num * 4)[x2].i` with an 8 byte union `Num`). Other
+combinations raise `EncodeError`.
+
+A pair must be two elements of one array. A typed operand knows how many
+bytes remain to the end of its array (`MemExpr.extent`), and `ldp` or
+`stp` raises `EncodeError` when the second register would go past it:
+`ldp(d0, d1, p.v[2])` loads `v[2]` and `v[3]`, while `p.v[3]` cannot
+start a pair. A structure field is a single slot, even when a field of the
+same size follows it (`p.x` and `p.y`) or its structure is an array
+element. A nested array ends with its own row, and a zero length array
+is unbounded. Register indexed elements never reach a pair, since `ldp` and
+`stp` take no index register. The extent is not part of the address, so
+it does not show in `str()` and does not affect `==`. To pair two fields
+of a structure, such as the `re` and `im` doubles of a complex number,
+use the structure's unsized `addr`: `ldp(d0, d1, c.addr)`.
+
 ## aarch64
 
 `jita.aarch64` works like `jita.x64`. `Assembler()` picks it on an aarch64
@@ -379,7 +434,9 @@ the FP ones; a shifted or extended register is a `RegMod[X]` or
 `RegMod[W]`. `gp64(n)`, `gp32(n)`, `fp32(n)`,
 `fp64(n)` and `fp128(n)` select a register by number (31 is xzr/wzr).
 Access sizes come from the register and the mnemonic (`ldrb`, `ldrsh`,
-`ldr w0`, `ldr d0`), so memory operands have no size prefix.
+`ldr w0`, `ldr d0`), so memory operands have no size prefix. The operands
+of `typed()` fields carry their size and are checked against the access
+(see Structures).
 
 | Operand | jita | GNU as |
 | --- | --- | --- |

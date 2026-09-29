@@ -14,19 +14,24 @@ lay out exactly as ctypes lays them out.
 """
 
 import ctypes
-from _ctypes import CFuncPtr
 from dataclasses import replace
 from typing import Any, overload
 
 from ..core.errors import EncodeError
+from ..core.structs import (
+    AGGREGATES,
+    SCALAR_SIZES,
+    ArrayView,
+    StructView,
+    check_ctype,
+    element_offset,
+    get_field,
+    scalar_size,
+)
 from .mem import MemAny, MemExpr, sized
 from .regs import Reg
 
 __all__ = ["typed", "Typed", "TypedArray"]
-
-_AGGREGATES = (ctypes.Structure, ctypes.Union)
-_SCALARS = (ctypes._SimpleCData, ctypes._Pointer, CFuncPtr)
-_SCALAR_SIZES = (1, 2, 4, 8)
 
 
 @overload
@@ -52,13 +57,12 @@ def typed(base: Reg | MemExpr, ctype: type) -> Any:
         mem = base if isinstance(base, MemAny) else MemAny(base.base, base.index, base.scale, base.disp, base.label)
     else:
         raise TypeError(f"typed() base must be a register or memory expression, got {base!r}")
-    if not isinstance(ctype, type) or not issubclass(ctype, (*_AGGREGATES, ctypes.Array, *_SCALARS)):
-        raise TypeError(f"typed() expects a ctypes type, got {ctype!r}")
+    check_ctype(ctype)
     return _view(mem, ctype)
 
 
 def _view(mem: MemAny, ctype: type) -> Any:
-    if issubclass(ctype, _AGGREGATES):
+    if issubclass(ctype, AGGREGATES):
         return Typed(mem, ctype)
     if issubclass(ctype, ctypes.Array):
         return TypedArray(mem, ctype)
@@ -66,26 +70,14 @@ def _view(mem: MemAny, ctype: type) -> Any:
 
 
 def _scalar(mem: MemAny, ctype: type) -> MemExpr:
-    if getattr(ctype, "_type_", None) == "g":
-        raise EncodeError(f"{ctype.__name__} (long double) has no x64 memory operand size")
-    le = getattr(ctype, "__ctype_le__", ctype)
-    if le is not ctype:
-        raise EncodeError(f"{ctype.__name__} is a big endian field; x64 loads are little endian")
-    size = ctypes.sizeof(ctype)
-    if size not in _SCALAR_SIZES:
-        raise EncodeError(f"{ctype.__name__} is {size} bytes, not a 1, 2, 4 or 8 byte scalar")
-    return sized(mem, size)
-
-
-def _is_dunder(name: str) -> bool:
-    return len(name) > 4 and name.startswith("__") and name.endswith("__")
+    return sized(mem, scalar_size(ctype, "x64"))
 
 
 def _offset(mem: MemAny, offset: int) -> MemAny:
     return mem + offset if offset else mem
 
 
-class Typed:
+class Typed(StructView[MemAny]):
     """A ctypes Structure or Union at a memory address.
 
     Attribute access yields the field: a sized `MemExpr` for scalars, a
@@ -98,51 +90,14 @@ class Typed:
     names are not fields.
     """
 
-    __slots__ = ("addr", "ctype")
-    addr: MemAny
-    ctype: type
-
-    def __init__(self, addr: MemAny, ctype: type):
-        object.__setattr__(self, "addr", addr)
-        object.__setattr__(self, "ctype", ctype)
-
-    @property
-    def size(self) -> int:
-        return ctypes.sizeof(self.ctype)
-
-    def _fields(self) -> list[str]:
-        t = self.ctype
-        found = [(f.offset, n) for n in dir(t) if isinstance(f := getattr(t, n, None), ctypes.CField)]
-        return [n for _, n in sorted(found)]
+    __slots__ = ()
 
     def __getitem__(self, name: str) -> Any:
-        if not isinstance(name, str):
-            raise TypeError(f"{self.ctype.__name__} fields are selected by name, got {name!r}")
-        field = getattr(self.ctype, name, None) if not _is_dunder(name) else None
-        if not isinstance(field, ctypes.CField):
-            raise AttributeError(
-                f"{self.ctype.__name__} has no field {name!r}; fields: {', '.join(self._fields())}"
-            )
-        if field.is_bitfield:
-            raise EncodeError(f"{self.ctype.__name__}.{name} is a bit field, which has no memory operand")
+        field = get_field(self.ctype, name)
         return _view(_offset(self.addr, field.offset), field.type)
 
-    def __getattr__(self, name: str) -> Any:
-        if _is_dunder(name):
-            raise AttributeError(name)
-        return self[name]
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        raise AttributeError(f"{type(self).__name__} is read-only")
-
-    def __dir__(self) -> list[str]:
-        return list(dict.fromkeys(["addr", "ctype", "size", *self._fields()]))
-
-    def __repr__(self) -> str:
-        return f"typed({self.addr}, {self.ctype.__name__})"
-
-
-class TypedArray:
+class TypedArray(ArrayView[MemAny]):
     """A ctypes Array at a memory address.
 
     `view[i]` with an int is the element at a constant index, `view[reg]`
@@ -151,33 +106,13 @@ class TypedArray:
     sized `MemExpr`s, `Typed` or nested `TypedArray` views like fields.
     """
 
-    __slots__ = ("addr", "ctype")
-    addr: MemAny
-    ctype: type[ctypes.Array[Any]]
-
-    def __init__(self, addr: MemAny, ctype: type[ctypes.Array[Any]]):
-        object.__setattr__(self, "addr", addr)
-        object.__setattr__(self, "ctype", ctype)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        raise AttributeError(f"{type(self).__name__} is read-only")
-
-    @property
-    def size(self) -> int:
-        return ctypes.sizeof(self.ctype)
-
-    @property
-    def element(self) -> type:
-        return getattr(self.ctype, "_type_")
-
-    def __len__(self) -> int:
-        return getattr(self.ctype, "_length_")
+    __slots__ = ()
 
     def __getitem__(self, i: int | Reg) -> Any:
         elem = self.element
         esize = ctypes.sizeof(elem)
         if isinstance(i, Reg):
-            if esize not in _SCALAR_SIZES:
+            if esize not in SCALAR_SIZES:
                 raise EncodeError(
                     f"{self.ctype.__name__}[{i}]: element size {esize} is not a valid scale (1, 2, 4, 8)"
                 )
@@ -188,12 +123,4 @@ class TypedArray:
             else:
                 mem = self.addr._add_reg(i, esize)
             return _view(mem, elem)
-        if isinstance(i, int) and not isinstance(i, bool):
-            n = len(self)
-            if n and not 0 <= i < n:
-                raise IndexError(f"{self.ctype.__name__} index {i} out of range 0..{n - 1}")
-            return _view(_offset(self.addr, i * esize), elem)
-        raise TypeError(f"{self.ctype.__name__} index must be an int or a register, got {i!r}")
-
-    def __repr__(self) -> str:
-        return f"typed({self.addr}, {self.ctype.__name__})"
+        return _view(_offset(self.addr, element_offset(self.ctype, i)), elem)

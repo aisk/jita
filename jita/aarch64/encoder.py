@@ -43,6 +43,10 @@ operands DynASM encodes into something other than what was written:
   ldp/ldpsw loading the same register twice, are rejected (CONSTRAINED
   UNPREDICTABLE in the architecture).
 - An instruction with more operands than its template consumes is an error.
+- A memory operand from `typed()` carries its field's size, and a load or
+  store of another width is rejected (ldp/stp compare the size of one
+  register). ldp/stp on a typed() operand must also fit its extent: two
+  elements of one array, never a lone field and the next one.
 """
 
 import math
@@ -286,6 +290,7 @@ class _Alt:
         if self.n + 1 < len(self.params):
             raise self.fail("too many operands", pos=self.n + 1)
         scale = op >> 30
+        self.check_size(m, 1 << scale)
         op += self.base(m.base)
         self.overlap(m)
         if m.mode == "post":
@@ -331,6 +336,22 @@ class _Alt:
             1,
         )
 
+    def check_size(self, m: MemExpr, width: int) -> None:
+        # jita: a typed() field knows its size, so the access must match.
+        if m.size is not None and m.size != width:
+            raise self.fail(f"typed() operand {m} holds {m.size} bytes, this access is {width} bytes", 1)
+
+    def check_pair(self, m: MemExpr, width: int) -> None:
+        # jita: the second register of a pair must stay inside the array
+        # the typed() element belongs to; a plain field has no room for it.
+        if m.extent is not None and 2 * width > m.extent:
+            raise self.fail(
+                f"the pair reads {2 * width} bytes from typed() operand {m}, which has {m.extent} bytes "
+                "to the end of its field or array; a pair must be two elements of one array "
+                "(pair structure fields through the structure's unsized .addr)",
+                1,
+            )
+
     def overlap(self, m: MemExpr) -> None:
         # jita: writeback into a register that is also transferred is
         # CONSTRAINED UNPREDICTABLE.
@@ -350,6 +371,8 @@ class _Alt:
         if m.index is not None:
             raise self.fail("register pair addresses take an immediate offset, not an index", 1)
         scale = 2 + (op >> (31 - ((op >> 26) & 1)))
+        self.check_size(m, 1 << scale)
+        self.check_pair(m, 1 << scale)
         t, t2 = self.params[0], self.params[1]
         if op & 0x00400000 and t is t2:
             raise self.fail(f"loading {t} twice is unpredictable", 1)

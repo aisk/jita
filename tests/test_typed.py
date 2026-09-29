@@ -206,6 +206,17 @@ def test_underscore_fields_and_dir():
         v.__missing__
 
 
+def test_field_named_like_a_view_helper():
+    # A field called `_fields` once lost to a private method of the view.
+    class Odd(ctypes.Structure):
+        _fields_ = [("n", ctypes.c_int32), ("_fields", ctypes.c_int64)]
+
+    v = typed(rax, Odd)
+    assert v._fields == qword[rax + 8]
+    assert v["_fields"] == qword[rax + 8]
+    assert "_fields" in dir(v)
+
+
 def test_typed_is_the_function():
     import jita.x64.structs  # noqa: F401
 

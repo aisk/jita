@@ -10,6 +10,7 @@ from .insns import *
 from .insns import Aarch64Assembler as Aarch64Assembler
 from .mem import *
 from .regs import *
+from .structs import typed as typed
 
 NOP: bytes
 
@@ -29,6 +30,7 @@ __all__ = [
     "Aarch64Arch",
     "Aarch64Assembler",
     "label",
+    "typed",
     "adc",
     "adcs",
     "add",

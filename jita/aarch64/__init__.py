@@ -19,6 +19,7 @@ from .insns import INSNS as _INSNS
 from .insns import Aarch64Assembler
 from .mem import *  # noqa: F403
 from .regs import *  # noqa: F403
+from .structs import typed
 
 NOP = b"\x1f\x20\x03\xd5"  # d503201f
 
@@ -76,13 +77,14 @@ def _find_clear_cache() -> Callable[..., Any]:
 ARCH = Aarch64Arch()
 
 # Keep `from jita.aarch64 import *` to registers, memory operands, mnemonics,
-# ARCH and the arch classes; helper imports and submodule names are not
-# exported. `__init__.pyi` carries the same list literally.
+# `typed`, ARCH and the arch classes; helper imports and submodule names
+# are not exported. `__init__.pyi` carries the same list literally.
 __all__ = [
     "ARCH",
     "Aarch64Arch",
     "Aarch64Assembler",
     "label",
+    "typed",
     *_insns.__all__,
     *_mem.__all__,
     *_regs.__all__,
