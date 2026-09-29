@@ -93,18 +93,33 @@ name = "jita"
 version = "0.1.0"
 source = { editable = "." }
 
+[package.optional-dependencies]
+cheader = [
+    { name = "pcpp" },
+    { name = "pycparser" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "pcpp" },
+    { name = "pycparser" },
     { name = "pyright" },
     { name = "pytest" },
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "pcpp", marker = "extra == 'cheader'", specifier = "==1.30" },
+    { name = "pycparser", marker = "extra == 'cheader'", specifier = ">=3.0,<3.1" },
+]
+provides-extras = ["cheader"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.3.1" },
+    { name = "pcpp", specifier = "==1.30" },
+    { name = "pycparser", specifier = ">=3.0,<3.1" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]
@@ -258,12 +273,30 @@ wheels = [
 ]
 
 [[package]]
+name = "pcpp"
+version = "1.30"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/07/876153f611f2c610bdb8f706a5ab560d888c938ea9ea65ed18c374a9014a/pcpp-1.30.tar.gz", hash = "sha256:5af9fbce55f136d7931ae915fae03c34030a3b36c496e72d9636cedc8e2543a1", size = 94283, upload-time = "2021-10-29T13:16:54.565Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/ca/ada7f39c5a0977893e0ef809b1617b259b2d76f6382a7abad00dd6d77904/pcpp-1.30-py2.py3-none-any.whl", hash = "sha256:05fe08292b6da57f385001c891a87f40d6aa7f46787b03e8ba326d20a3297c6e", size = 91085, upload-time = "2021-10-29T13:16:51.846Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "pycparser"
+version = "3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29", size = 103492, upload-time = "2026-01-21T14:26:51.89Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992", size = 48172, upload-time = "2026-01-21T14:26:50.693Z" },
 ]
 
 [[package]]

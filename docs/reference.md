@@ -7,7 +7,7 @@ The README has the short version.
 Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Labels](#labels) · [Externs](#externs) · [Data](#data-directives) ·
 [Functions](#functions) · [Listings](#listings) ·
-[x64](#x64) · [Structures](#structures) ·
+[x64](#x64) · [Structures](#structures) · [C headers](#c-headers) ·
 [aarch64](#aarch64) · [riscv64](#riscv64) · [loongarch64](#loongarch64) ·
 [Compared with DynASM](#compared-with-dynasm) ·
 [Errors](#errors) · [Type checking](#type-checking)
@@ -491,6 +491,91 @@ elements, `mul.d` for others). An indexed element needs `ldx`, `stx`,
 an operand without a width check, and `a0 + 8` is only a base for
 `typed`: write `ld.w(a1, a0, 8)` for a plain load.
 
+## C headers
+
+`jita.cheader` reads C headers at runtime and builds the ctypes types
+that `typed()` takes, so code for an existing C API uses the header's own
+layouts. It needs pycparser and pcpp: `pip install "jita[cheader]"`.
+
+```python
+import ctypes, sysconfig
+from jita import function
+from jita.cheader import load, python_defines
+from jita.x64 import *
+
+h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
+
+@function(ctypes.c_ssize_t, ctypes.c_void_p)
+def py_len():
+    mov(rax, typed(rdi, h.PyVarObject).ob_size)   # Py_SIZE(ob)
+    ret()
+
+print(py_len(id([1, 2, 3])))                          # 3
+print(h.Py_TPFLAGS_HEAPTYPE, h.PyUnicode_1BYTE_KIND)  # 512 1
+```
+
+`load(*headers, include_dirs=(), defines=None, types=None, names=None,
+exclude=(), strict=False)` preprocesses the headers as one translation
+unit and returns a `Header`, a module (not in `sys.modules`) whose
+attributes are the C names:
+
+| C | attribute |
+| --- | --- |
+| `struct foo`, `union foo` | `struct_foo`, `union_foo`: a `ctypes.Structure` or `Union` subclass |
+| `typedef ... name` | `name`: the same class, or the ctypes type (`Py_ssize_t` is `c_ssize_t`) |
+| `enum foo { A, B }` | `enum_foo`, a `c_int` subclass (wider if the values need it), and `A`, `B` as ints |
+| `int f(char *);` | `f`: a `CFUNCTYPE` class, usable with `ctypes.cast(address, h.f)` |
+| `#define N (1 << 4)` | `N`: an int, float or str, when the expansion is a constant |
+
+Each header is looked up as given, then in `include_dirs`, which also
+serve its own `#include` and `__has_include`. Standard names such as
+`int32_t`, `size_t` and `wchar_t` map to their ctypes types; `char *` is
+`c_char_p`, a function pointer a `CFUNCTYPE` class, `T[]` is `T * 0`. A
+struct that is only forward declared is a class without `_fields_`,
+usable through `POINTER`. Anonymous members get `_jita_anonN` names in
+`_anonymous_`, so their fields are reached directly, as in C. Bit fields,
+`__attribute__((packed))`, `aligned(N)`, `__declspec(align(N))` and
+`#pragma pack` (also written `_Pragma` or `__pragma`) become `_fields_`
+widths, `_pack_` and `_align_`. An enum field reads back as an instance
+of its enum class, the ctypes rule for subclasses of simple types.
+
+The preprocessor defines the host compiler's macros: GCC's (clang's on
+macOS) with the sizes ctypes reports, MSVC's on Windows. `<...>`
+includes missing from `include_dirs` are skipped, with the usual system
+type names declared as types of unknown size; a missing `"..."` include
+raises `HeaderError`. `defines={"NAME": value}` adds a macro, a value of
+None removes one. `types={"off_t": ctypes.c_int64}` maps a type name
+ahead of the headers' typedefs. `names` and `exclude` are fnmatch
+patterns choosing the names exposed; the types they use are built anyway.
+Every call parses again and creates new classes, so keep the `Header` to
+share them. For Python.h, `python_defines()` gives the running
+interpreter's layout flags (`Py_GIL_DISABLED`, `Py_DEBUG`,
+`Py_TRACE_REFS`, `Py_STATS`, each only when set) as `defines`, since
+pyconfig.h does not always record them: on Windows one pyconfig.h serves
+the GIL and free threaded builds.
+
+What cannot be converted exactly is skipped, never loaded with a wrong
+layout: variadic functions, `__int128`, `typeof`, zero width bit fields,
+bit fields in packed structs (GCC and MSVC pack them differently),
+packed enums, `#pragma pack` inside a struct body, a field aligned beyond
+its natural alignment, `mode`, `vector_size` and other attributes that
+change a layout, system types used by value unless named in `types`,
+declarations pycparser cannot parse (C23, `_Generic`), and everything
+that depends on a skipped type. `diagnostics(h)` lists
+`Diagnostic(severity, kind, name, file, line, message)` records:
+`"skip"` for a declaration left out, `"note"` for something ignored or
+degraded, such as a skipped system include, a pointer to an unsupported
+type made `c_void_p` or a macro hidden by a declaration of the same name.
+Reading a skipped name raises an `AttributeError` with the reason and the
+location, and `strict=True` raises `HeaderError` at the first skip.
+Function like macros and macros using `sizeof` are not exposed.
+
+Layouts are the ones ctypes computes on the host, so there is no target
+option. The 64 bit Linux targets (x86-64, aarch64, riscv64 and
+loongarch64) share one layout, so offsets loaded on one are right for the
+others' code; Windows and macOS differ in `long`, `wchar_t` and
+`long double`.
+
 ## aarch64
 
 `jita.aarch64` works like `jita.x64`. `Assembler()` picks it on an aarch64
@@ -846,7 +931,8 @@ range immediate, unsupported combination). `LinkError` is raised by
 missing extern addresses and misaligned bases. `LoadError` covers
 executable memory allocation and writes outside writable sections. Plain
 `TypeError` is used for wrong Python types, such as a float where an int
-operand is expected.
+operand is expected. `jita.cheader.HeaderError` is raised for a header
+that cannot be found or loaded.
 
 ## Type checking
 
@@ -883,12 +969,13 @@ that need one specific register (`cl` as a shift count, `xmm0` for
 `blendvps`, accumulator forms of `mov64`), `sp` versus `xzr` on aarch64,
 the shape of memory operands (a rip base with an index, offset ranges,
 writeback into a transferred register) and whether a label is ever bound.
-`typed()` fields are typed `Any`, and the functions returned by
-`function` and `a.function` accept any arguments (`JitFunction` from
-`jita.runtime`), since ctypes decides the signature at runtime. A
-`MemExpr(...)` built by hand has no size class and is rejected where a
-sized operand is expected; build memory operands with `qword[...]` and
-friends.
+`typed()` fields are typed `Any`, as are the names of a `jita.cheader`
+`Header`, which exist only once the header is loaded. The functions
+returned by `function` and `a.function` accept any arguments
+(`JitFunction` from `jita.runtime`), since ctypes decides the signature
+at runtime. A `MemExpr(...)` built by hand has no size class and is
+rejected where a sized operand is expected; build memory operands with
+`qword[...]` and friends.
 
 Annotate helpers with the concrete classes, or leave the parameters
 unannotated:

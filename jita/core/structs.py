@@ -82,6 +82,8 @@ def get_field(ctype: type, name: str) -> Any:
         raise TypeError(f"{ctype.__name__} fields are selected by name, got {name!r}")
     field = getattr(ctype, name, None) if not is_dunder(name) else None
     if not isinstance(field, ctypes.CField):
+        if issubclass(ctype, AGGREGATES) and not hasattr(ctype, "_fields_"):
+            raise AttributeError(f"{ctype.__name__} is opaque (only forward declared), it has no field {name!r}")
         raise AttributeError(f"{ctype.__name__} has no field {name!r}; fields: {', '.join(_field_names(ctype))}")
     if field.is_bitfield:
         raise EncodeError(f"{ctype.__name__}.{name} is a bit field, which has no memory operand")

@@ -17,6 +17,7 @@ EXPECTED = {
     "riscv64_hello.py": ["bnez a1, loop", "; b12 -> loop", "ld t0, strlen@slot", "; pcrel32 -> strlen@slot"],
     "sum_array.py": ["sum(1..100) = 5050"],
     "dispatch_table.py": ["result = -68"],
+    "cheader_pyobject.py": ["list size: 3", "tuple size: 2", "float value: 2.75", "heap type flag: 512"],
     "call_extern.py": [
         "strlen via register: 15",
         "strlen via extern slot: 15",

@@ -40,12 +40,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user binutils-riscv64-linux-gnu libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
-      - name: Download a riscv64 CPython and pytest
+      - name: Download a riscv64 CPython and the test dependencies
         run: |
           curl -fsSL "$PYTHON_URL" | tar -xz -C "$RUNNER_TEMP"
-          # pytest and its dependencies are pure Python, so wheels resolved
+          # pytest, pycparser and pcpp are pure Python, so wheels resolved
           # on the host run on the riscv64 interpreter.
-          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest
+          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest "pycparser>=3.0,<3.1" "pcpp==1.30"
       - name: Run the tests under qemu-riscv64
         shell: bash  # -eo pipefail
         env:
@@ -79,14 +79,14 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git qemu-user binutils-loongarch64-linux-gnu
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v10.2.0
-      - name: Unpack a loong64 CPython with its glibc and install pytest
+      - name: Unpack a loong64 CPython with its glibc and the test dependencies
         run: |
           # glibc and the GCC runtime come from the same index as Python, so
           # they match however far the cross packages lag behind sid.
           uv run --no-project --python 3.14 tools/fetch_debian_python.py --with-libc loong64 3.14 "$RUNNER_TEMP/loong64" >> "$GITHUB_ENV"
-          # pytest and its dependencies are pure Python, so wheels resolved
+          # pytest, pycparser and pcpp are pure Python, so wheels resolved
           # on the host run on the loong64 interpreter.
-          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest
+          uv pip install --python 3.14 --target "$RUNNER_TEMP/site" pytest "pycparser>=3.0,<3.1" "pcpp==1.30"
       - name: Run the tests under qemu-loongarch64
         shell: bash  # -eo pipefail
         env:

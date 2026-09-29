@@ -15,3 +15,7 @@ class LinkError(JitaError):
 
 class LoadError(JitaError):
     """Executable memory cannot be allocated, written or protected."""
+
+
+class HeaderError(JitaError):
+    """A C header cannot be loaded by `jita.cheader`."""
