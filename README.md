@@ -45,9 +45,8 @@ code generator: inside a factory it closes over the factory's parameters,
 so `k` above becomes an immediate and Python `if` statements can decide
 what code is emitted. `typed()` views memory through a `ctypes` structure,
 so generated code and Python share one definition of the layout. For an
-existing C header, [ctypesgen](https://github.com/ctypesgen/ctypesgen) or
-[clang2py](https://github.com/trolldbois/ctypeslib) generate that
-structure for you.
+existing C header, `jita.cheader.load` builds those structures at runtime
+(`pip install "jita[cheader]"`).
 Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands
 are written as `qword[rbx + rcx*8 + 8]` or `mem[x0 + 8]`, labels are
 strings or `Label` objects, and macros are plain Python functions. Without
@@ -60,8 +59,9 @@ The full API is described in [docs/reference.md](docs/reference.md). The
 `examples/` directory has runnable programs: a loop with a macro, a
 bytecode interpreter with a dispatch table, three ways to call into libc
 from one module, an SSE2 dot product, a linked list of ctypes structures,
-a factory that specializes code by Python parameters, and aarch64,
-riscv64 and loongarch64 functions whose listings print on any host.
+a factory that specializes code by Python parameters, CPython objects
+read with the layouts of Python.h, and aarch64, riscv64 and loongarch64
+functions whose listings print on any host.
 
 ## Install and run
 
