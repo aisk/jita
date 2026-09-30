@@ -244,7 +244,7 @@ def test_decorator_body_with_and_without_parameter():
 
 def jump_to(name):
     # Tail call into the C API: the arguments and the return value pass through.
-    mov(rax, Extern(name, ctypes.cast(getattr(ctypes.pythonapi, name), ctypes.c_void_p).value))
+    mov(rax, Extern(getattr(ctypes.pythonapi, name)))
     jmp(rax)
 
 

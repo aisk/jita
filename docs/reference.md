@@ -110,6 +110,8 @@ when the target is out of range.
 from jita import Extern
 strlen = Extern("strlen")             # address supplied at load time
 puts = Extern("puts", 0x7f00_1234)    # or fixed up front
+size = Extern(ctypes.pythonapi.PyObject_Size)  # name, address from ctypes
+cb = Extern("cb", callback)           # a ctypes callback, named explicitly
 call(qword[rip + strlen])             # call through the pointer slot
 mov(rax, strlen); call(rax)           # 64 bit absolute address
 call(strlen)                          # direct rel32, must be within 2GB
@@ -117,7 +119,14 @@ fn = a.function(ctypes.c_size_t, ctypes.c_char_p, externs={"strlen": addr})
 ```
 
 The `externs` mapping given to `link`, `load` or `function` wins over an
-address fixed in the constructor. `call(ext)` and `jmp(ext)` are rel32 and
+address fixed in the constructor. A ctypes function pointer, such as a
+function of a `CDLL` or `ctypes.pythonapi` or a `CFUNCTYPE` callback, can
+be given instead of an address. `Extern(fn)` takes the name from
+`fn.__name__`, and a callback, which has none, is named with
+`Extern(name, fn)`. The Extern keeps the function object alive, and so
+does a callable from `a.function` or `function` through its assembler. A
+`Module` from `a.load()` does not, so keep the function referenced while
+the module is in use. `call(ext)` and `jmp(ext)` are rel32 and
 fail with `LinkError` when the target is more than 2GB from the code,
 which is common for shared libraries. An Extern used as a rip-relative
 memory operand refers instead to an 8 byte slot holding the extern's
@@ -228,11 +237,9 @@ import ctypes
 from jita import Extern, function
 from jita.x64 import *
 
-as_long_addr = ctypes.cast(ctypes.pythonapi.PyLong_AsLongLong, ctypes.c_void_p).value
-
 @function(ctypes.c_longlong, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
 def as_long():                    # tail call into PyLong_AsLongLong
-    mov(rax, Extern("PyLong_AsLongLong", as_long_addr))
+    mov(rax, Extern(ctypes.pythonapi.PyLong_AsLongLong))
     jmp(rax)
 
 print(as_long(42))                # 42

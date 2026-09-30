@@ -2,6 +2,7 @@
 the extern's address, while `call(ext)` stays a direct rel32 call."""
 
 import ctypes
+import gc
 import platform
 
 import pytest
@@ -234,3 +235,33 @@ def test_tail_call_through_slot():
         jmp(qword[rip + Extern("strlen", addr)])
     with a.load() as mod:
         assert mod.function(ctypes.c_size_t, ctypes.c_char_p)(b"abc") == 3
+
+
+def test_extern_from_ctypes_function():
+    fn = ctypes.pythonapi.PyObject_Size
+    ext = Extern(fn)
+    assert ext.name == "PyObject_Size"
+    assert ext.address == ctypes.cast(fn, ctypes.c_void_p).value
+    renamed = Extern("size", fn)
+    assert renamed.name == "size" and renamed.address == ext.address
+
+
+def test_extern_from_ctypes_function_errors():
+    cb = ctypes.CFUNCTYPE(None)(lambda: None)
+    with pytest.raises(TypeError, match="no __name__"):
+        Extern(cb)
+    with pytest.raises(TypeError, match="takes no address"):
+        Extern(ctypes.pythonapi.PyObject_Size, 1)
+    with pytest.raises(ValueError, match="NULL"):
+        Extern("null", ctypes.CFUNCTYPE(None)())
+
+
+@needs_host
+def test_extern_keeps_a_callback_alive():
+    calls = []
+    ext = Extern("cb", ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int)(lambda v: calls.append(v) or v + 1))
+    gc.collect()
+    a = Assembler(x64)
+    with a:
+        jmp(qword[rip + ext])
+    assert a.function(ctypes.c_int, ctypes.c_int)(41) == 42 and calls == [41]

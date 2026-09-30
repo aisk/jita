@@ -44,6 +44,8 @@ m2 = 8 * rcx + rbx - 4
 q: Mem64 = qword[m]
 r: Gp32 = gp32(3)
 slot = qword[rip + Extern("strlen")]
+py_size = Extern(ctypes.pythonapi.PyObject_Size)
+renamed = Extern("size", ctypes.pythonapi.PyObject_Size)
 load(rax, qword[rdi + 8])
 load(rax, rdi + rsi * 8)
 bump(ecx)

@@ -3,7 +3,9 @@ line carries the exact ignore comment of both checkers, and unused
 ignores are errors, so a line that stops being an error fails the check
 (tests/test_typing.py)."""
 
-from jita import Assembler, Label
+import ctypes
+
+from jita import Assembler, Extern, Label
 from jita.x64 import *  # noqa: F403
 from jita.x64 import MemExpr
 
@@ -62,3 +64,8 @@ def names() -> None:
     movv(rax, 1)  # type: ignore[name-defined]  # pyright: ignore[reportUndefinedVariable]
     a.movv(rax, 1)  # type: ignore[operator]  # pyright: ignore[reportCallIssue]
     a.jz.shortt("x")  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def externs() -> None:
+    Extern(ctypes.pythonapi.PyObject_Size, 1)  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
+    Extern(1)  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType]

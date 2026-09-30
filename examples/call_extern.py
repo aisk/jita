@@ -17,7 +17,8 @@ loaded once with `a.load()` and each entry becomes a callable with
 `mod.function(..., entry=name)`. `a.function` would load a separate copy
 per call. Addresses of externs are supplied when loading, through the
 `externs` mapping. `Extern("name", address)` fixes the address up front
-instead.
+instead, and `Extern(libc.strlen)` takes the name and the address from a
+ctypes function.
 
 Run with `uv run python examples/call_extern.py`.
 """

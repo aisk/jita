@@ -17,8 +17,7 @@ from jita.x64 import *
 # The interpreter's own Python.h, turned into ctypes types at runtime.
 h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
 PyTupleObject = h.PyTupleObject
-addr = ctypes.cast(ctypes.pythonapi.PyObject_Size, ctypes.c_void_p).value
-size = Extern("PyObject_Size", addr)
+size = Extern(ctypes.pythonapi.PyObject_Size)
 
 @function(ctypes.c_ssize_t, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
 def total_len():                           # sum(map(len, t)) for a tuple t

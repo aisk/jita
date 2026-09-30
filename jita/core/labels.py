@@ -1,7 +1,9 @@
 """Labels, indexed PC labels and external symbols."""
 
+import ctypes
 import itertools
-from typing import TYPE_CHECKING
+from _ctypes import CFuncPtr
+from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
     from .assembler import Assembler
@@ -88,12 +90,34 @@ class Extern:
 
     The address is supplied at link/load time via the `externs` mapping, or
     fixed up front with `Extern("memcpy", addr)`. The mapping wins if both
-    are given.
+    are given. A ctypes function pointer stands for its address:
+    `Extern(ctypes.pythonapi.PyObject_Size)` takes the name from the
+    function, and `Extern("cb", cb)` names one without a `__name__`, such
+    as a callback. The Extern keeps such a function alive.
     """
 
-    __slots__ = ("name", "address")
+    __slots__ = ("name", "address", "_ref")
 
-    def __init__(self, name: str, address: int | None = None):
+    @overload
+    def __init__(self, name: str, address: int | CFuncPtr | None = None) -> None: ...
+    @overload
+    def __init__(self, name: CFuncPtr) -> None: ...
+
+    def __init__(self, name: str | CFuncPtr, address: int | CFuncPtr | None = None) -> None:
+        self._ref = None
+        if isinstance(name, CFuncPtr):
+            if address is not None:
+                raise TypeError("Extern(fn) takes no address; use Extern(name, fn) to rename fn")
+            fn_name = getattr(name, "__name__", None)
+            if not isinstance(fn_name, str):
+                raise TypeError(f"{name!r} has no __name__; use Extern(name, fn)")
+            address = name
+            name = fn_name
+        if isinstance(address, CFuncPtr):
+            self._ref = address
+            address = ctypes.cast(address, ctypes.c_void_p).value
+            if address is None:
+                raise ValueError(f"extern {name!r}: the function pointer is NULL")
         self.name = name
         self.address = address
 
