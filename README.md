@@ -9,44 +9,42 @@ call through `ctypes`. It has no runtime dependencies and needs Python 3.14.
 The API ships type stubs, so pyright and mypy check instruction operands.
 
 ```python
-import ctypes
+import ctypes, sysconfig
 from jita import function
+from jita.cheader import load, python_defines
 from jita.x64 import *
 
-class Vec(ctypes.Structure):
-    _fields_ = [("data", ctypes.POINTER(ctypes.c_int64)), ("len", ctypes.c_size_t)]
+# The interpreter's own Python.h, turned into ctypes types at runtime.
+h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
 
-def make_scaled_sum(k):               # int64_t f(Vec *v): k * sum(v->data[0..len))
-    @function(ctypes.c_int64, ctypes.POINTER(Vec))
-    def f():
-        v = typed(rdi, Vec)           # field offsets come from ctypes
-        mov(rsi, v.data)              # qword[rdi]
-        mov(rcx, v.len)               # qword[rdi + 8]
-        xor(eax, eax)
-        test(rcx, rcx)
-        jz("done")
-        label("loop")
-        add(rax, qword[rsi])
-        add(rsi, 8)
-        dec(rcx)
-        jnz("loop")
-        label("done")
-        imul(rax, rax, k)             # k is an immediate in the generated code
-        ret()
-    return f
+@function(ctypes.c_double, ctypes.py_object)
+def fsum():                                # sum of a list of floats
+    xs = typed(rdi, h.PyListObject)        # field offsets come from Python.h
+    mov(rcx, xs.ob_base.ob_size)           # Py_SIZE(xs)
+    mov(rsi, xs.ob_item)
+    xorpd(xmm0, xmm0)
+    test(rcx, rcx)
+    jz("done")
+    label("loop")
+    mov(rax, qword[rsi])                   # PyObject *item
+    addsd(xmm0, typed(rax, h.PyFloatObject).ob_fval)
+    add(rsi, 8)
+    dec(rcx)
+    jnz("loop")
+    label("done")
+    ret()
 
-arr = (ctypes.c_int64 * 3)(1, 2, 3)
-print(make_scaled_sum(10)(Vec(arr, 3)))   # 60
+print(fsum([1.5, 2.0, 3.25]))              # 6.75
 ```
 
-`@function` runs the body once inside a fresh `Assembler`, loads the
-result and replaces the name with the `ctypes` callable. The body is a
-code generator: inside a factory it closes over the factory's parameters,
-so `k` above becomes an immediate and Python `if` statements can decide
-what code is emitted. `typed()` views memory through a `ctypes` structure,
-so generated code and Python share one definition of the layout. For an
-existing C header, `jita.cheader.load` builds those structures at runtime
-(`pip install "jita[cheader]"`).
+`jita.cheader.load` reads C headers and builds `ctypes` structures from
+them (`pip install "jita[cheader]"`), and `typed()` views memory through
+such a structure, so the generated code reads CPython objects with the
+layout of the running build. `@function` runs the body once inside a
+fresh `Assembler`, loads the result and replaces the name with the
+`ctypes` callable. The body is a code generator: inside a factory it
+closes over the factory's parameters, which become immediates, and
+Python `if` statements can decide what code is emitted.
 Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands
 are written as `qword[rbx + rcx*8 + 8]` or `mem[x0 + 8]`, labels are
 strings or `Label` objects, and macros are plain Python functions. Without
@@ -67,6 +65,7 @@ functions whose listings print on any host.
 
 ```sh
 uv add jita                        # in your project, or pip install jita
+uv add "jita[cheader]"             # with jita.cheader, as in the example above
 uv sync && uv run pytest           # working on jita itself
 uv run python examples/sum_array.py
 ```
