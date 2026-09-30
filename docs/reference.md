@@ -160,15 +160,17 @@ add2 = a.function(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)
 print(add2(40, 2))                # 42
 ```
 
-`a.function(restype, *argtypes, entry=None, externs=None)` loads the
-assembler into freshly mapped memory and returns a `ctypes` function
-pointer at `entry` (a label or name, default the start of the image).
-`externs` supplies extern addresses (see [Externs](#externs)). The memory
-is released when the callable is garbage collected, so closing it is
-optional (see [Modules](#modules)). Every `a.function` call loads a
-separate copy of the code: two callables made from the same assembler do
-not share writable data, so for several entries into one copy load once
-with `a.load()` and take each entry with `mod.function`.
+`a.function(restype, *argtypes, entry=None, externs=None,
+functype=ctypes.CFUNCTYPE)` loads the assembler into freshly mapped memory
+and returns a `ctypes` function pointer at `entry` (a label or name,
+default the start of the image). `externs` supplies extern addresses (see
+[Externs](#externs)). The memory is released when the callable is garbage
+collected, so closing it is optional (see [Modules](#modules)). Every
+`a.function` call loads a separate copy of the code: two callables made
+from the same assembler do not share writable data, so for several entries
+into one copy load once with `a.load()` and take each entry with
+`mod.function`. `functype` is described under
+[The GIL and functype](#the-gil-and-functype).
 
 The `function` decorator is one more layer on top. The decorated body runs
 once, at decoration time, inside a fresh `Assembler`, and the decorated
@@ -195,8 +197,9 @@ triple = make_scale(3)
 print(triple(7), make_scale(10, 1)(7))   # 21 71
 ```
 
-`function(restype, *argtypes, entry=None, externs=None, arch=None)` takes
-the same arguments as `a.function`, plus `arch` for the assembler it
+`function(restype, *argtypes, entry=None, externs=None, arch=None,
+functype=ctypes.CFUNCTYPE)` takes the same arguments as `a.function`, plus
+`arch` for the assembler it
 creates (default: the host). A body declared with one parameter, `def
 f(a)`, receives the assembler for `a.pc`, `a.section`, `a.align` and the
 other methods; a body without parameters is called with none. The body's
@@ -207,6 +210,37 @@ when the module is imported.
 Either way the callable carries what produced it: `fn.module` is the
 loaded `Module` and `fn.assembler` the `Assembler`, for listings, symbol
 addresses and writes into data.
+
+### The GIL and functype
+
+`functype` is the ctypes factory that builds the function pointer type,
+called as `functype(restype, *argtypes)`. With the default
+`ctypes.CFUNCTYPE` the GIL is released while the generated code runs (the
+thread state is detached on a free threading build), so the code must not
+call the Python C API or read Python objects that another thread may
+change. `ctypes.PYFUNCTYPE` keeps the GIL, and if a Python error is set
+when the code returns, the call raises it instead of returning the
+result. Other factories work too, such as
+`functools.partial(ctypes.CFUNCTYPE, use_errno=True)`.
+
+```python
+import ctypes
+from jita import Extern, function
+from jita.x64 import *
+
+as_long_addr = ctypes.cast(ctypes.pythonapi.PyLong_AsLongLong, ctypes.c_void_p).value
+
+@function(ctypes.c_longlong, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
+def as_long():                    # tail call into PyLong_AsLongLong
+    mov(rax, Extern("PyLong_AsLongLong", as_long_addr))
+    jmp(rax)
+
+print(as_long(42))                # 42
+try:
+    as_long("x")
+except TypeError as e:            # the error PyLong_AsLongLong set
+    print(e)
+```
 
 ### Modules
 
@@ -240,8 +274,9 @@ bump(); bump()
 print(get(), hex(mod.address("counter")))   # 42 and the address
 ```
 
-`mod.function(restype, *argtypes, entry=None)` returns a callable at
-`entry` whose `module` attribute keeps the module alive. `mod.write(where,
+`mod.function(restype, *argtypes, entry=None, functype=ctypes.CFUNCTYPE)`
+returns a callable at `entry` whose `module` attribute keeps the module
+alive. `mod.write(where,
 data)` overwrites bytes at a label, a symbol name or an offset from the
 image base; only writable sections accept writes, the executable prefix is
 a `LoadError`. `mod.address(label)` returns an absolute address and

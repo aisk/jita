@@ -2,6 +2,7 @@
 to a ctypes callable without handling the Module."""
 
 import ctypes
+import functools
 import gc
 import platform
 import weakref
@@ -239,3 +240,38 @@ def test_decorator_body_with_and_without_parameter():
 
     assert with_a() == 1 and without_a() == 2
     assert seen == [with_a.assembler, without_a.assembler]
+
+
+def jump_to(name):
+    # Tail call into the C API: the arguments and the return value pass through.
+    mov(rax, Extern(name, ctypes.cast(getattr(ctypes.pythonapi, name), ctypes.c_void_p).value))
+    jmp(rax)
+
+
+def test_functype_default_releases_the_gil():
+    a = Assembler(x64)
+    with a:
+        jump_to("PyGILState_Check")
+    assert a.function(ctypes.c_int)() == 0
+    assert a.function(ctypes.c_int, functype=ctypes.PYFUNCTYPE)() == 1
+
+
+def test_functype_pyfunctype_raises_the_python_error():
+    @function(ctypes.c_longlong, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
+    def as_long():
+        jump_to("PyLong_AsLongLong")
+
+    assert as_long(-7) == -7
+    with pytest.raises(TypeError):
+        as_long("x")
+
+
+def test_module_function_functype():
+    a = Assembler(x64)
+    with a:
+        jump_to("PyGILState_Check")
+    mod = a.load()
+    assert mod.function(ctypes.c_int, functype=ctypes.PYFUNCTYPE)() == 1
+    errno_type = functools.partial(ctypes.CFUNCTYPE, use_errno=True)
+    fn = mod.function(ctypes.c_int, functype=errno_type)
+    assert fn() == 0 and fn.module is mod

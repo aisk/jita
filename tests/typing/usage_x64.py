@@ -95,4 +95,13 @@ def double() -> None:
 
 
 result = double(21)
+
+
+@function(ctypes.py_object, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
+def identity() -> None:
+    mov(rax, rdi)
+    ret()
+
+
+same = identity.module.function(ctypes.py_object, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
 text: str = listing(double.assembler, double.module.image)

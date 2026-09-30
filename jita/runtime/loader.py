@@ -52,12 +52,20 @@ class Module:
         self._check_open()
         return self.image.address(label)
 
-    def function(self, restype: Any, *argtypes: Any, entry: Label | str | None = None) -> LoadedFunction:
-        """ctypes CFUNCTYPE bound to `entry` (default: image base). Its
-        `module` attribute is this module."""
+    def function(
+        self,
+        restype: Any,
+        *argtypes: Any,
+        entry: Label | str | None = None,
+        functype: Callable[..., Any] = ctypes.CFUNCTYPE,
+    ) -> LoadedFunction:
+        """`functype(restype, *argtypes)` bound to `entry` (default: image
+        base). The default CFUNCTYPE releases the GIL during the call; pass
+        ctypes.PYFUNCTYPE for code that uses the Python C API. Its `module`
+        attribute is this module."""
         self._check_open()
         addr = self.image.base if entry is None else self.address(entry)
-        fn = ctypes.CFUNCTYPE(restype, *argtypes)(addr)
+        fn = functype(restype, *argtypes)(addr)
         setattr(fn, "module", self)
         return cast(LoadedFunction, fn)
 
@@ -111,6 +119,7 @@ def function(
     entry: Label | str | None = None,
     externs: Mapping[str, int] | None = None,
     arch: object = None,
+    functype: Callable[..., Any] = ctypes.CFUNCTYPE,
 ) -> Callable[[Callable[..., object]], JitFunction]:
     """Decorator turning a code generator into a ctypes callable.
 
@@ -118,7 +127,8 @@ def function(
     `Assembler(arch)` entered as the current context. A body that takes a
     parameter receives that assembler (for `a.pc`, `a.section`, ...); a
     body without parameters is called with none. The result is
-    `a.function(restype, *argtypes, entry=entry, externs=externs)`, with
+    `a.function(restype, *argtypes, entry=entry, externs=externs,
+    functype=functype)`, with
     the body's `__name__`, `__qualname__` and `__doc__` copied onto it.
     Inside a factory function the body closes over the factory's
     parameters, which is how specialized variants are generated.
@@ -131,7 +141,7 @@ def function(
                 body(a)
             else:
                 body()
-        fn = a.function(restype, *argtypes, entry=entry, externs=externs)
+        fn = a.function(restype, *argtypes, entry=entry, externs=externs, functype=functype)
         for attr in ("__name__", "__qualname__", "__doc__"):
             try:
                 setattr(fn, attr, getattr(body, attr))

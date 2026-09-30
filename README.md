@@ -17,7 +17,7 @@ from jita.x64 import *
 # The interpreter's own Python.h, turned into ctypes types at runtime.
 h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
 
-@function(ctypes.c_double, ctypes.py_object)
+@function(ctypes.c_double, ctypes.py_object, functype=ctypes.PYFUNCTYPE)  # keeps the GIL
 def fsum():                                # sum of a list of floats
     xs = typed(rdi, h.PyListObject)        # field offsets come from Python.h
     mov(rcx, xs.ob_base.ob_size)           # Py_SIZE(xs)
@@ -42,7 +42,9 @@ them (`pip install "jita[cheader]"`), and `typed()` views memory through
 such a structure, so the generated code reads CPython objects with the
 layout of the running build. `@function` runs the body once inside a
 fresh `Assembler`, loads the result and replaces the name with the
-`ctypes` callable. The body is a code generator: inside a factory it
+`ctypes` callable, which by default releases the GIL during the call like
+any ctypes call; `ctypes.PYFUNCTYPE` keeps it, since `fsum` reads a list
+another thread could change. The body is a code generator: inside a factory it
 closes over the factory's parameters, which become immediates, and
 Python `if` statements can decide what code is emitted.
 Registers are objects (`rax`, `r8d`, `xmm0`, `x0`, `w1`), memory operands

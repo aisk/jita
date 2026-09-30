@@ -4,7 +4,8 @@
 structs into ctypes types, so `typed(rdi, h.PyVarObject).ob_size` is the
 same field the C API macro `Py_SIZE` reads, at the offset of this build
 (the free threading build has a larger object header). `id(obj)` is the
-object's address in CPython.
+object's address in CPython. The functions are built with
+`ctypes.PYFUNCTYPE`, which keeps the GIL while they read the objects.
 
 Needs `pip install "jita[cheader]"`. Run with
 `uv run python examples/cheader_pyobject.py`.
@@ -22,13 +23,13 @@ from jita.x64 import *  # noqa: F403
 h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
 
 
-@function(ctypes.c_ssize_t, ctypes.c_void_p)
+@function(ctypes.c_ssize_t, ctypes.c_void_p, functype=ctypes.PYFUNCTYPE)
 def py_size() -> None:
     mov(rax, typed(rdi, h.PyVarObject).ob_size)
     ret()
 
 
-@function(ctypes.c_double, ctypes.c_void_p)
+@function(ctypes.c_double, ctypes.c_void_p, functype=ctypes.PYFUNCTYPE)
 def float_value() -> None:
     movsd(xmm0, typed(rdi, h.PyFloatObject).ob_fval)
     ret()

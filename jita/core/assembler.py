@@ -1,6 +1,7 @@
 """The Assembler: sections, labels, data directives and the current context."""
 
 import builtins
+import ctypes
 import importlib
 import platform
 from collections.abc import Callable, Iterator, Mapping
@@ -440,6 +441,7 @@ class Assembler(_AssemblerInit):
         *argtypes: Any,
         entry: Label | str | None = None,
         externs: Mapping[str, int] | None = None,
+        functype: Callable[..., Any] = ctypes.CFUNCTYPE,
     ) -> JitFunction:
         """Load into a fresh Module and return a ctypes callable bound to
         `entry` (default: image base). The callable keeps the Module alive
@@ -448,10 +450,11 @@ class Assembler(_AssemblerInit):
 
         Every call loads a separate copy of the code: two callables made
         this way do not share writable data. For several entries into one
-        copy use `load()` and `Module.function`."""
+        copy use `load()` and `Module.function`. `functype` is passed on
+        to `Module.function`."""
         from ..runtime.loader import JitFunction, load
 
-        fn = load(self, externs).function(restype, *argtypes, entry=entry)
+        fn = load(self, externs).function(restype, *argtypes, entry=entry, functype=functype)
         setattr(fn, "assembler", self)
         return cast(JitFunction, fn)
 
