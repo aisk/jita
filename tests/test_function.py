@@ -2,7 +2,6 @@
 to a ctypes callable without handling the Module."""
 
 import ctypes
-import functools
 import gc
 import platform
 import weakref
@@ -53,10 +52,10 @@ def test_assembler_function():
     arr = (ctypes.c_int64 * 4)(1, 2, 3, 4)
     assert fn(arr, 4) == 10
     assert fn(arr, 0) == 0
-    assert fn.assembler is a
+    assert fn.module.assembler is a
     assert not fn.module.closed
     assert ctypes.cast(cast(Any, fn), ctypes.c_void_p).value == fn.module.image.base
-    assert "add" in listing(fn.assembler, fn.module.image)
+    assert "add" in listing(fn.module.assembler, fn.module.image)
 
 
 def test_assembler_function_entry():
@@ -111,7 +110,7 @@ def test_decorator_module_level_mnemonics():
     assert sum_array.__name__ == "sum_array"
     assert sum_array.__qualname__.endswith("<locals>.sum_array")
     assert sum_array.__doc__ == "Sum n int64 values."
-    assert isinstance(sum_array.assembler, Assembler)
+    assert isinstance(sum_array.module.assembler, Assembler)
     assert not sum_array.module.closed
 
 
@@ -136,8 +135,8 @@ def test_decorator_assembler_methods():
 
     assert f(-5) == 205
     assert f(7) == 207
-    assert "data" in f.assembler.sections
-    assert "externs" in f.assembler.sections
+    assert "data" in f.module.assembler.sections
+    assert "externs" in f.module.assembler.sections
 
 
 def test_decorator_entry_and_externs():
@@ -173,7 +172,7 @@ def test_decorator_in_factory():
     assert len(triple.module.image.data) != len(ten_plus_one.module.image.data)
 
 
-def test_function_outlives_module_and_assembler():
+def test_function_keeps_module_and_assembler():
     a = Assembler(x64)
     with a:
         mov(eax, 42)
@@ -183,8 +182,8 @@ def test_function_outlives_module_and_assembler():
     mod_ref, asm_ref = weakref.ref(mod), weakref.ref(a)
     del mod, a
     gc.collect()
-    assert asm_ref() is None
     assert mod_ref() is fn.module
+    assert asm_ref() is fn.module.assembler
     assert fn() == 42
 
 
@@ -239,39 +238,13 @@ def test_decorator_body_with_and_without_parameter():
         ret()
 
     assert with_a() == 1 and without_a() == 2
-    assert seen == [with_a.assembler, without_a.assembler]
+    assert seen == [with_a.module.assembler, without_a.module.assembler]
 
 
-def jump_to(name):
-    # Tail call into the C API: the arguments and the return value pass through.
-    mov(rax, Extern(getattr(ctypes.pythonapi, name)))
-    jmp(rax)
+def test_function_releases_the_gil():
+    @function(ctypes.c_int)
+    def gil_check():
+        mov(rax, Extern(ctypes.pythonapi.PyGILState_Check))
+        jmp(rax)
 
-
-def test_functype_default_releases_the_gil():
-    a = Assembler(x64)
-    with a:
-        jump_to("PyGILState_Check")
-    assert a.function(ctypes.c_int)() == 0
-    assert a.function(ctypes.c_int, functype=ctypes.PYFUNCTYPE)() == 1
-
-
-def test_functype_pyfunctype_raises_the_python_error():
-    @function(ctypes.c_longlong, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
-    def as_long():
-        jump_to("PyLong_AsLongLong")
-
-    assert as_long(-7) == -7
-    with pytest.raises(TypeError):
-        as_long("x")
-
-
-def test_module_function_functype():
-    a = Assembler(x64)
-    with a:
-        jump_to("PyGILState_Check")
-    mod = a.load()
-    assert mod.function(ctypes.c_int, functype=ctypes.PYFUNCTYPE)() == 1
-    errno_type = functools.partial(ctypes.CFUNCTYPE, use_errno=True)
-    fn = mod.function(ctypes.c_int, functype=errno_type)
-    assert fn() == 0 and fn.module is mod
+    assert gil_check() == 0

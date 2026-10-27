@@ -17,8 +17,8 @@ loop bodies use `jnz.short`, which emits a rel8 branch and fails loudly at
 link time if the target is ever out of range. jita never shrinks branches
 on its own.
 
-The listing of each variant is printed from `fn.assembler` and the image
-of the loaded module, `fn.module.image`, so it shows real addresses.
+The listing of each variant is printed from the loaded module,
+`fn.module.assembler` with `fn.module.image`, so it shows real addresses.
 
 Run with `uv run python examples/conditional_codegen.py`.
 """
@@ -87,7 +87,7 @@ def main() -> None:
         result = fn(arr, len(values))
         results.append(result)
         print(f"reduce({', '.join(f'{k}={v!r}' for k, v in params.items())}) = {result}")
-        print(listing(fn.assembler, fn.module.image))
+        print(listing(fn.module.assembler, fn.module.image))
         print()
 
     assert results == [31, 20, 12]

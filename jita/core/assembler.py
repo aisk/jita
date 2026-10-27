@@ -1,7 +1,6 @@
 """The Assembler: sections, labels, data directives and the current context."""
 
 import builtins
-import ctypes
 import importlib
 import platform
 from collections.abc import Callable, Iterator, Mapping
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
     from ..loongarch64.insns import Loongarch64Assembler
     from ..riscv64 import Riscv64Arch
     from ..riscv64.insns import Riscv64Assembler
-    from ..runtime.loader import JitFunction, Module
+    from ..runtime.loader import Builtin, CFunction, Module
     from ..x64 import X64Arch
     from ..x64.insns import X64Assembler
     from .link import Image
@@ -441,22 +440,30 @@ class Assembler(_AssemblerInit):
         *argtypes: Any,
         entry: Label | str | None = None,
         externs: Mapping[str, int] | None = None,
-        functype: Callable[..., Any] = ctypes.CFUNCTYPE,
-    ) -> JitFunction:
+    ) -> CFunction:
         """Load into a fresh Module and return a ctypes callable bound to
-        `entry` (default: image base). The callable keeps the Module alive
-        through its `module` attribute and this assembler through
-        `assembler`; the memory is released when it is garbage collected.
+        `entry` (default: image base), see `Module.function`. The callable
+        keeps the Module alive through its `module` attribute; the memory is
+        released when it is garbage collected.
 
         Every call loads a separate copy of the code: two callables made
         this way do not share writable data. For several entries into one
-        copy use `load()` and `Module.function`. `functype` is passed on
-        to `Module.function`."""
-        from ..runtime.loader import JitFunction, load
+        copy use `load()` and `Module.function`."""
+        return self.load(externs).function(restype, *argtypes, entry=entry)
 
-        fn = load(self, externs).function(restype, *argtypes, entry=entry, functype=functype)
-        setattr(fn, "assembler", self)
-        return cast(JitFunction, fn)
+    def builtin(
+        self,
+        flags: int,
+        *,
+        entry: Label | str | None = None,
+        externs: Mapping[str, int] | None = None,
+        name: str | None = None,
+        doc: str | None = None,
+        module_name: str | None = None,
+    ) -> Builtin:
+        """Load into a fresh Module and return a builtin function at `entry`,
+        see `Module.builtin`. Like `function`, every call loads a copy."""
+        return self.load(externs).builtin(flags, entry=entry, name=name, doc=doc, module_name=module_name)
 
 
 def _check_pow2(n: int) -> None:

@@ -3,7 +3,7 @@ views, functions. Must type check cleanly (tests/test_typing.py)."""
 
 import ctypes
 
-from jita import Assembler, Extern, Label, function
+from jita import METH_O, Assembler, Extern, Label, Module, builtin, function
 from jita.tools.listing import listing
 from jita.x64 import *  # noqa: F403
 from jita.x64 import Gp, Gp32, Gp64, Mem64, MemAny, X64Assembler, Xmm
@@ -99,11 +99,12 @@ def double() -> None:
 result = double(21)
 
 
-@function(ctypes.py_object, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
+@builtin(METH_O)
 def identity() -> None:
-    mov(rax, rdi)
-    ret()
+    mov(rdi, rsi)
+    jmp(qword[rip + Extern(ctypes.pythonapi.Py_NewRef)])
 
 
-same = identity.module.function(ctypes.py_object, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
-text: str = listing(double.assembler, double.module.image)
+same = identity.__self__.builtin(METH_O, name="same")
+module: Module = identity.__self__
+text: str = listing(double.module.assembler, double.module.image)

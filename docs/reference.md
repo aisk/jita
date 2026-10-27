@@ -6,7 +6,7 @@ The README has the short version.
 
 Contents: [Assembler](#assembler) · [Sections](#sections) ·
 [Labels](#labels) · [Externs](#externs) · [Data](#data-directives) ·
-[Functions](#functions) · [Listings](#listings) ·
+[Functions](#functions) · [Builtins](#builtins) · [Listings](#listings) ·
 [x64](#x64) · [Structures](#structures) · [C headers](#c-headers) ·
 [aarch64](#aarch64) · [riscv64](#riscv64) · [loongarch64](#loongarch64) ·
 [Compared with DynASM](#compared-with-dynasm) ·
@@ -124,9 +124,8 @@ function of a `CDLL` or `ctypes.pythonapi` or a `CFUNCTYPE` callback, can
 be given instead of an address. `Extern(fn)` takes the name from
 `fn.__name__`, and a callback, which has none, is named with
 `Extern(name, fn)`. The Extern keeps the function object alive, and so
-does a callable from `a.function` or `function` through its assembler. A
-`Module` from `a.load()` does not, so keep the function referenced while
-the module is in use. `call(ext)` and `jmp(ext)` are rel32 and
+does every `Module` loaded from its assembler, which keeps the assembler.
+`call(ext)` and `jmp(ext)` are rel32 and
 fail with `LinkError` when the target is more than 2GB from the code,
 which is common for shared libraries. An Extern used as a rip-relative
 memory operand refers instead to an 8 byte slot holding the extern's
@@ -169,17 +168,22 @@ add2 = a.function(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)
 print(add2(40, 2))                # 42
 ```
 
-`a.function(restype, *argtypes, entry=None, externs=None,
-functype=ctypes.CFUNCTYPE)` loads the assembler into freshly mapped memory
-and returns a `ctypes` function pointer at `entry` (a label or name,
-default the start of the image). `externs` supplies extern addresses (see
-[Externs](#externs)). The memory is released when the callable is garbage
-collected, so closing it is optional (see [Modules](#modules)). Every
-`a.function` call loads a separate copy of the code: two callables made
-from the same assembler do not share writable data, so for several entries
-into one copy load once with `a.load()` and take each entry with
-`mod.function`. `functype` is described under
-[The GIL and functype](#the-gil-and-functype).
+`a.function(restype, *argtypes, entry=None, externs=None)` loads the
+assembler into freshly mapped memory and returns a `ctypes.CFUNCTYPE`
+function pointer at `entry` (a label or name, default the start of the
+image). `externs` supplies extern addresses (see [Externs](#externs)). The
+memory is released when the callable is garbage collected, so closing it
+is optional (see [Modules](#modules)). Every `a.function` call loads a
+separate copy of the code: two callables made from the same assembler do
+not share writable data, so for several entries into one copy load once
+with `a.load()` and take each entry with `mod.function`.
+
+ctypes converts the arguments and the result on every call, which costs a
+few hundred nanoseconds, and releases the GIL while the code runs (the
+thread state is detached on a free threading build). So the code must not
+call the Python C API or read Python objects that another thread may
+change. Code that works on Python objects, or is called often with little
+work per call, is better made a [builtin](#builtins).
 
 The `function` decorator is one more layer on top. The decorated body runs
 once, at decoration time, inside a fresh `Assembler`, and the decorated
@@ -206,9 +210,8 @@ triple = make_scale(3)
 print(triple(7), make_scale(10, 1)(7))   # 21 71
 ```
 
-`function(restype, *argtypes, entry=None, externs=None, arch=None,
-functype=ctypes.CFUNCTYPE)` takes the same arguments as `a.function`, plus
-`arch` for the assembler it
+`function(restype, *argtypes, entry=None, externs=None, arch=None)` takes
+the same arguments as `a.function`, plus `arch` for the assembler it
 creates (default: the host). A body declared with one parameter, `def
 f(a)`, receives the assembler for `a.pc`, `a.section`, `a.align` and the
 other methods; a body without parameters is called with none. The body's
@@ -216,38 +219,60 @@ other methods; a body without parameters is called with none. The body's
 onto the callable. A decorated function at module level generates its code
 when the module is imported.
 
-Either way the callable carries what produced it: `fn.module` is the
-loaded `Module` and `fn.assembler` the `Assembler`, for listings, symbol
-addresses and writes into data.
+Either way `fn.module` is the loaded `Module`, and `fn.module.assembler`
+the `Assembler` that produced it, for listings, symbol addresses and
+writes into data.
 
-### The GIL and functype
+### Builtins
 
-`functype` is the ctypes factory that builds the function pointer type,
-called as `functype(restype, *argtypes)`. With the default
-`ctypes.CFUNCTYPE` the GIL is released while the generated code runs (the
-thread state is detached on a free threading build), so the code must not
-call the Python C API or read Python objects that another thread may
-change. `ctypes.PYFUNCTYPE` keeps the GIL, and if a Python error is set
-when the code returns, the call raises it instead of returning the
-result. Other factories work too, such as
-`functools.partial(ctypes.CFUNCTYPE, use_errno=True)`.
+`builtin` makes the code a builtin function, the kind a C extension
+defines, so CPython calls it directly with no conversion layer. A call
+costs about as much as calling `len`. The code receives Python objects
+and returns a new reference, or NULL with an exception set, which the
+call raises. The GIL is held while it runs.
 
 ```python
 import ctypes
-from jita import Extern, function
+from jita import METH_O, Extern, builtin
 from jita.x64 import *
 
-@function(ctypes.c_longlong, ctypes.py_object, functype=ctypes.PYFUNCTYPE)
-def as_long():                    # tail call into PyLong_AsLongLong
-    mov(rax, Extern(ctypes.pythonapi.PyLong_AsLongLong))
-    jmp(rax)
+@builtin(METH_O)
+def twice():                      # PyObject *twice(PyObject *self, PyObject *x)
+    mov(rdi, rsi)                 # PyNumber_Add(x, x)
+    jmp(qword[rip + Extern(ctypes.pythonapi.PyNumber_Add)])
 
-print(as_long(42))                # 42
+print(twice(21), twice("ab"))     # 42 abab
 try:
-    as_long("x")
-except TypeError as e:            # the error PyLong_AsLongLong set
+    twice(None)
+except TypeError as e:            # the error PyNumber_Add set
     print(e)
 ```
+
+`builtin(flags, entry=None, externs=None, arch=None)` runs the body like
+`function` and names the result after it, with its `__doc__` and
+`__module__`. `flags` is the calling convention, the `METH_*` flags of
+CPython's `PyMethodDef`, exported by jita with the same values:
+
+| flags | the code is called as |
+| --- | --- |
+| `METH_NOARGS` | `f(self, NULL)` |
+| `METH_O` | `f(self, arg)` |
+| `METH_FASTCALL` | `f(self, PyObject *const *args, Py_ssize_t nargs)` |
+| `METH_FASTCALL \| METH_KEYWORDS` | `f(self, args, nargs, PyObject *kwnames)`, keyword values after the positional ones in `args` |
+| `METH_VARARGS` | `f(self, PyObject *args_tuple)` |
+| `METH_VARARGS \| METH_KEYWORDS` | `f(self, args_tuple, PyObject *kwargs_dict_or_NULL)` |
+
+CPython checks the argument count for `METH_NOARGS` and `METH_O`; with the
+other conventions the code checks it, as it checks argument types. `self`
+is the loaded `Module`, also `fn.__self__`, which keeps the code alive.
+`a.builtin(flags, entry=None, externs=None, name=None, doc=None,
+module_name=None)` and `mod.builtin(flags, entry=None, name=None,
+doc=None, module_name=None)` do the same without the decorator; `name`
+defaults to the name of `entry`, else `"builtin"`, and `module_name`
+becomes `__module__`. CPython reads the `PyMethodDef` behind a builtin
+until the function is gone, so jita keeps each one for the life of the
+process, a few dozen bytes shared by builtins with the same address,
+flags, name and doc.
 
 ### Modules
 
@@ -281,9 +306,11 @@ bump(); bump()
 print(get(), hex(mod.address("counter")))   # 42 and the address
 ```
 
-`mod.function(restype, *argtypes, entry=None, functype=ctypes.CFUNCTYPE)`
-returns a callable at `entry` whose `module` attribute keeps the module
-alive. `mod.write(where,
+`mod.function(restype, *argtypes, entry=None)` returns a ctypes callable
+at `entry` whose `module` attribute keeps the module alive, and
+`mod.builtin(...)` a builtin whose `__self__` is the module.
+`mod.assembler` is the assembler it was loaded from; code emitted into it
+after loading is not in the module. `mod.write(where,
 data)` overwrites bytes at a label, a symbol name or an offset from the
 image base; only writable sections accept writes, the executable prefix is
 a `LoadError`. `mod.address(label)` returns an absolute address and
@@ -316,7 +343,7 @@ detected.
 from jita.tools.listing import listing
 print(listing(a))             # offsets, bytes, one instruction per line
 print(listing(a, img))        # with linked addresses
-print(listing(fn.assembler, fn.module.image))   # a function at its real addresses
+print(listing(fn.module.assembler, fn.module.image))   # a function at its real addresses
 ```
 
 Listings show every section, the bound labels, the bytes of each
@@ -541,18 +568,18 @@ layouts. It needs pycparser and pcpp: `pip install "jita[cheader]"`.
 
 ```python
 import ctypes, sysconfig
-from jita import function
+from jita import METH_O, Extern, builtin
 from jita.cheader import load, python_defines
 from jita.x64 import *
 
 h = load("Python.h", include_dirs=[sysconfig.get_path("include")], defines=python_defines())
 
-@function(ctypes.c_ssize_t, ctypes.c_void_p)
+@builtin(METH_O)
 def py_len():
-    mov(rax, typed(rdi, h.PyVarObject).ob_size)   # Py_SIZE(ob)
-    ret()
+    mov(rdi, typed(rsi, h.PyVarObject).ob_size)   # Py_SIZE(ob)
+    jmp(qword[rip + Extern(ctypes.pythonapi.PyLong_FromSsize_t)])
 
-print(py_len(id([1, 2, 3])))                          # 3
+print(py_len([1, 2, 3]))                              # 3
 print(h.Py_TPFLAGS_HEAPTYPE, h.PyUnicode_1BYTE_KIND)  # 512 1
 ```
 
@@ -1013,11 +1040,11 @@ the shape of memory operands (a rip base with an index, offset ranges,
 writeback into a transferred register) and whether a label is ever bound.
 `typed()` fields are typed `Any`, as are the names of a `jita.cheader`
 `Header`, which exist only once the header is loaded. The functions
-returned by `function` and `a.function` accept any arguments
-(`JitFunction` from `jita.runtime`), since ctypes decides the signature
-at runtime. A `MemExpr(...)` built by hand has no size class and is
-rejected where a sized operand is expected; build memory operands with
-`qword[...]` and friends.
+returned by `function` and `builtin` accept any arguments (`CFunction` and
+`Builtin` from `jita.runtime`), since ctypes or the generated code decides
+the signature at runtime. A `MemExpr(...)` built by hand has no size class
+and is rejected where a sized operand is expected; build memory operands
+with `qword[...]` and friends.
 
 Annotate helpers with the concrete classes, or leave the parameters
 unannotated:

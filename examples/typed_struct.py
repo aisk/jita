@@ -70,7 +70,7 @@ def main() -> None:
         if i + 1 < len(nodes):
             n.next = ctypes.pointer(nodes[i + 1])
     total = sum_list(ctypes.pointer(nodes[0]))
-    print(next(line for line in listing(sum_list.assembler).splitlines() if "movsxd" in line))
+    print(next(line for line in listing(sum_list.module.assembler).splitlines() if "movsxd" in line))
     print(f"totals = {[n.total for n in nodes]}, flags = {[n.flags for n in nodes]}")
     print(f"sum = {total}")
 

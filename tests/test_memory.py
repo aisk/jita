@@ -13,7 +13,7 @@ import jita.aarch64 as aarch64
 import jita.loongarch64 as loongarch64
 import jita.riscv64 as riscv64
 import jita.x64 as x64
-from jita import Assembler, LoadError
+from jita import METH_O, Assembler, Extern, LoadError
 from jita.runtime import ExecMemory
 
 MACHINE = platform.machine().lower()
@@ -138,3 +138,58 @@ def test_loongarch64_add_two_ints():
         loongarch64.ret()
     with a.load() as mod:
         assert mod.function(ctypes.c_int, ctypes.c_int, ctypes.c_int)(40, 2) == 42
+
+
+# A METH_O builtin returning its argument: f(self, arg) tail calls
+# Py_NewRef(arg), so the second argument register moves to the first.
+NEWREF = Extern(ctypes.pythonapi.Py_NewRef)
+
+
+def check_identity_builtin(a):
+    fn = a.builtin(METH_O, name="ident")
+    o = object()
+    assert fn(o) is o and fn.__self__.assembler is a
+
+
+@x86_64_host
+def test_x64_builtin():
+    first, second = (x64.rcx, x64.rdx) if platform.system() == "Windows" else (x64.rdi, x64.rsi)
+    a = Assembler(x64)
+    with a:
+        x64.mov(first, second)
+        x64.mov(x64.rax, NEWREF)
+        x64.jmp(x64.rax)
+    check_identity_builtin(a)
+
+
+@aarch64_host
+def test_aarch64_builtin():
+    a = Assembler(aarch64)
+    with a:
+        aarch64.mov(aarch64.x0, aarch64.x1)
+        aarch64.ldr(aarch64.x16, "ptr")
+        aarch64.br(aarch64.x16)
+        a.align(8)
+        aarch64.label("ptr")
+        a.qword(NEWREF)
+    check_identity_builtin(a)
+
+
+@riscv64_host
+def test_riscv64_builtin():
+    a = Assembler(riscv64)
+    with a:
+        riscv64.mv(riscv64.a0, riscv64.a1)
+        riscv64.ld(riscv64.t0, a.extern_slot(NEWREF))
+        riscv64.jr(riscv64.t0)
+    check_identity_builtin(a)
+
+
+@loongarch64_host
+def test_loongarch64_builtin():
+    a = Assembler(loongarch64)
+    with a:
+        loongarch64.move(loongarch64.a0, loongarch64.a1)
+        loongarch64.ld.d(loongarch64.t0, a.extern_slot(NEWREF))
+        loongarch64.jirl(loongarch64.zero, loongarch64.t0, 0)
+    check_identity_builtin(a)

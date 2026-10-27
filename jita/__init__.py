@@ -13,9 +13,23 @@ from .core import (
     current,
     label,
 )
-from .runtime import Module, function
+from .runtime import (
+    METH_FASTCALL,
+    METH_KEYWORDS,
+    METH_NOARGS,
+    METH_O,
+    METH_VARARGS,
+    Module,
+    builtin,
+    function,
+)
 
 __all__ = [
+    "METH_FASTCALL",
+    "METH_KEYWORDS",
+    "METH_NOARGS",
+    "METH_O",
+    "METH_VARARGS",
     "Assembler",
     "EncodeError",
     "Extern",
@@ -26,6 +40,7 @@ __all__ = [
     "LoadError",
     "Module",
     "PcLabels",
+    "builtin",
     "current",
     "function",
     "label",
